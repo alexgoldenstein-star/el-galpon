@@ -28,15 +28,22 @@ En [console.firebase.google.com](https://console.firebase.google.com) → proyec
 
 1. Entrá a `https://tu-sitio.vercel.app/#admin` (si ya estaba abierta, recargá con F5).
 2. La primera vez tocá **“Es mi primera vez: crear acceso”** con tu mail, verificalo desde el mail que te llega y tocá **“Ya verifiqué”** (o usá **Ingresar con Google** si es una cuenta de Google).
-3. Vas a ver el aviso “Los datos todavía no están en Firebase”. Completá WhatsApp, dirección, horarios, razón social, CUIT, etc. y tocá **Guardar y publicar**. Desde ahí, todo se edita y publica al instante, sin GitHub.
+3. Tocá **“Cargar datos iniciales”**. Después, en **Datos y fotos**, completá WhatsApp, dirección y horarios y tocá **Guardar y publicar**. Desde ahí, todo se edita y publica al instante, sin GitHub.
 
 ## Pedidos
 
 Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda con un número (ej. `#K3F9A`) y se abre WhatsApp con el mensaje ya escrito y ese número; solo tiene que tocar Enviar. En **Panel → Pedidos** los ves todos y les cambiás el estado: Nuevo, Confirmado, Listo para retirar, Entregado o Cancelado.
 
+## Panel: qué hay en cada pestaña
+
+- **Pedidos:** resumen (ventas 7 y 30 días, ticket promedio, revendedores activos, recompra, pendientes, más vendidos) y la lista de pedidos con filtros. Cada pedido tiene un botón para avisarle al revendedor por WhatsApp según su estado (recibido, confirmado, listo, entregado).
+- **Revendedores:** se arma solo con los pedidos. Muestra pedidos, total comprado, ticket promedio, último pedido y estado (activo, hace más de un mes, inactivo). Tiene notas internas y un botón para escribirle con las ofertas de la semana.
+- **Productos:** precio, sugerido y stock se editan directo en la lista y se guardan solos. "Cargar producto" abre la cámara del celular; "Guardar y cargar otro" agiliza la carga. Cada producto puede ser **combo** y tener **oferta** con fecha de fin (se muestra tachado y sale sola cuando vence).
+- **Datos y fotos** y **Equipo:** solo administradores.
+
 ## Equipo y permisos
 
-Desde **Panel → Equipo** sumás personas por su mail de Google, sin tocar código:
+Desde **Panel → Equipo** sumás personas por su mail, sin tocar código:
 - **Carga de productos:** agrega y edita productos, precios, fotos y stock, y ve los pedidos.
 - **Administrador:** además cambia los datos del negocio, las fotos de la página y el equipo.
 

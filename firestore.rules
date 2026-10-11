@@ -54,14 +54,20 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && request.resource.data.status in ['nuevo', 'confirmado', 'listo', 'entregado', 'cancelado'];
       allow delete: if isAdmin();
-      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'items', 'total', 'status', 'createdAt'])
+      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'phone', 'items', 'total', 'status', 'createdAt'])
         && request.resource.data.status == 'nuevo'
         && request.resource.data.code is string && request.resource.data.code.size() <= 10
         && request.resource.data.name is string && request.resource.data.name.size() <= 80
         && request.resource.data.barrio is string && request.resource.data.barrio.size() <= 80
+        && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 15))
         && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 50
         && request.resource.data.total is number
         && request.resource.data.createdAt == request.time;
+    }
+
+    // Notas internas sobre revendedores: solo el equipo.
+    match /resellers/{key} {
+      allow read, write: if isStaff();
     }
 
     match /{document=**} {
