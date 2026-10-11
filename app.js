@@ -4,6 +4,13 @@
   var app = document.getElementById('app');
   var stateEl = document.getElementById('site-state');
   var STANDALONE = !stateEl;
+  var MODE = stateEl ? 'artifact' : ((window.firebase && window.GALPON_FIREBASE) ? 'firebase' : 'static');
+  var ADMINS = (window.GALPON_ADMINS || []).map(function (e) { return String(e).toLowerCase().trim(); });
+  var fb = null; // {auth, db, storage}
+  var fbUser = null;
+  var orders = null; // admin list
+  var ordersErr = '';
+  var seedNeeded = false;
   var data = stateEl ? JSON.parse(stateEl.textContent) : null;
   var savedJSON = data ? JSON.stringify(data) : '';
   var view = 'inicio';
@@ -96,7 +103,7 @@
       '<nav class="nav" aria-label="Secciones">' +
       '<a href="#inicio" data-go="inicio" class="' + (view === 'inicio' ? 'on' : '') + '">Inicio</a>' +
       '<a href="#catalogo" data-go="catalogo" class="' + (view === 'catalogo' ? 'on' : '') + '">Catálogo</a>' +
-      (canEdit ? '<a href="#admin" data-go="admin" class="' + (view === 'admin' ? 'on' : '') + '">Administrar' + (dirty() ? ' •' : '') + '</a>' : '') +
+      ((canEdit || view === 'admin') ? '<a href="#admin" data-go="admin" class="' + (view === 'admin' ? 'on' : '') + '">Administrar' + (dirty() ? ' •' : '') + '</a>' : '') +
       '</nav>' +
       '<button class="cart-btn" type="button" data-act="open-cart" aria-label="Ver mi pedido">' + ic('bag') + (t.count ? '<span class="badge num">' + t.count + '</span>' : '') + '</button>' +
       '</div></header>';
@@ -345,14 +352,26 @@
   }
   function admin() {
     if (!canEdit) {
+      if (MODE === 'firebase') {
+        return '<div class="wrap admin"><div class="panel" style="max-width:520px">' +
+          '<h2>Administrar</h2>' +
+          (fbUser
+            ? '<p>Entraste como <b>' + esc(fbUser.email) + '</b>, pero esa cuenta no es administradora.</p><button class="btn btn-line btn-sm" type="button" data-act="logout">Salir y entrar con otra cuenta</button>'
+            : '<p>Ingresá con tu cuenta de Google para editar datos, productos y ver los pedidos.</p><button class="btn btn-main" type="button" data-act="login">Ingresar con Google</button>') +
+          (saveState.msg ? '<p style="color:var(--danger);font-weight:600">' + esc(saveState.msg) + '</p>' : '') +
+          '</div></div>';
+      }
       return '<div class="wrap admin"><div class="panel"><h2>Administrar</h2><p>Esta sección es solo para quien administra la página. Abrila desde tu cuenta para editar los datos y los productos.</p></div></div>';
     }
     var c = data.contact;
     return '<div class="wrap admin">' +
       '<div><span class="eyebrow">Panel del administrador</span><h1 class="h2" style="margin-top:8px">Administrar la página</h1>' +
-      '<p class="lead" style="margin-top:10px">' + (STANDALONE
+      '<p class="lead" style="margin-top:10px">' + (MODE === 'static'
         ? 'Los cambios se ven al instante en Inicio y Catálogo, solo en este navegador. Cuando termines, tocá “Descargar data.json” y subilo a GitHub reemplazando el anterior: Vercel publica en 1 minuto.'
-        : 'Los cambios se ven al instante en Inicio y Catálogo. Tocá “Guardar y publicar” para que los vean todos.') + '</p></div>' +
+        : 'Los cambios se ven al instante en Inicio y Catálogo. Tocá “Guardar y publicar” para que los vean todos.') + '</p>' +
+      (MODE === 'firebase' && fbUser ? '<p style="margin-top:8px;color:var(--ink-3);font-size:14px">Sesión: ' + esc(fbUser.email) + ' · <button type="button" data-act="logout" style="border:0;background:none;color:var(--orange-deep);font-weight:700;cursor:pointer;padding:0">Salir</button></p>' : '') +
+      '</div>' +
+      (MODE === 'firebase' ? ordersPanel() : '') +
       '<div class="admin-note">' + ic('info', 20) + '<span>Las fotos del depósito son de muestra. Reemplazalas por fotos reales del depósito y del equipo: es lo que más confianza genera.</span></div>' +
 
       '<div class="panel"><h2>Datos del negocio</h2><div class="form-grid">' +
@@ -385,15 +404,74 @@
       '</div>' +
       '</div>';
   }
+  function ordersPanel() {
+    var head = '<div class="panel"><div class="sec-row" style="margin:0"><h2>Pedidos recibidos</h2>' +
+      '<button class="btn btn-line btn-sm" type="button" data-act="load-orders">Actualizar</button></div>';
+    if (ordersErr) return head + '<p style="color:var(--danger)">' + esc(ordersErr) + '</p></div>';
+    if (!orders) return head + '<p>Cargando pedidos…</p></div>';
+    if (!orders.length) return head + '<p>Todavía no llegó ningún pedido. Cada vez que alguien toca “Enviar pedido por WhatsApp”, queda registrado acá.</p></div>';
+    var status = { nuevo: 'Nuevo', confirmado: 'Confirmado', entregado: 'Entregado', cancelado: 'Cancelado' };
+    var tot = 0; orders.forEach(function (o) { if (o.status !== 'cancelado') tot += Number(o.total) || 0; });
+    return head + '<p class="num">' + orders.length + ' pedidos · ' + money(tot) + ' en total (sin cancelados)</p>' +
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:14px;min-width:640px">' +
+      '<thead><tr style="text-align:left;color:var(--ink-3)"><th style="padding:8px">Fecha</th><th style="padding:8px">Revendedor</th><th style="padding:8px">Productos</th><th style="padding:8px;text-align:right">Total</th><th style="padding:8px">Estado</th></tr></thead><tbody>' +
+      orders.map(function (o) {
+        var d = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : null;
+        var when = d ? d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+        var items = (o.items || []).map(function (i) { return i.q + ' x ' + esc(i.name); }).join('<br>');
+        var sel = '<select data-order="' + esc(o.id) + '" aria-label="Estado del pedido" style="height:40px;border-radius:10px;border:2px solid var(--line);background:var(--bg);padding:0 8px">' +
+          Object.keys(status).map(function (k) { return '<option value="' + k + '"' + (o.status === k ? ' selected' : '') + '>' + status[k] + '</option>'; }).join('') + '</select>';
+        return '<tr style="border-top:1px solid var(--line);vertical-align:top"><td style="padding:8px;white-space:nowrap" class="num">' + when + '</td>' +
+          '<td style="padding:8px"><b>' + esc(o.name) + '</b><br><span style="color:var(--ink-3)">' + esc(o.barrio) + '</span></td>' +
+          '<td style="padding:8px">' + items + '</td>' +
+          '<td style="padding:8px;text-align:right;white-space:nowrap" class="num"><b>' + money(o.total) + '</b></td>' +
+          '<td style="padding:8px">' + sel + '</td></tr>';
+      }).join('') + '</tbody></table></div></div>';
+  }
+  function loadOrders() {
+    if (!fb || !canEdit) return;
+    ordersErr = '';
+    fb.db.collection('orders').orderBy('createdAt', 'desc').limit(100).get().then(function (snap) {
+      orders = snap.docs.map(function (d) { var o = d.data(); o.id = d.id; return o; });
+      if (view === 'admin') render(true);
+    }).catch(function () { ordersErr = 'No se pudieron cargar los pedidos.'; if (view === 'admin') render(true); });
+  }
+  function logOrder() {
+    if (MODE !== 'firebase' || !fb) return;
+    var t = cartTotals();
+    var items = cartLines().map(function (l) { return { id: l.p.id, name: l.p.name, q: l.q, price: Number(l.p.price) || 0 }; });
+    if (!items.length) return;
+    fb.db.collection('orders').add({
+      name: String(buyer.name || '').slice(0, 80),
+      barrio: String(buyer.barrio || '').slice(0, 80),
+      items: items.slice(0, 50),
+      total: t.total,
+      status: 'nuevo',
+      createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(function () {});
+  }
+  function dataUrlToBlob(u) {
+    var parts = u.split(','), bin = atob(parts[1]), arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: 'image/jpeg' });
+  }
+  function uploadImage(dataUrl) {
+    if (MODE !== 'firebase' || !fb) return Promise.resolve(dataUrl);
+    var ref = fb.storage.ref('img/' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '.jpg');
+    return ref.put(dataUrlToBlob(dataUrl), { contentType: 'image/jpeg', cacheControl: 'public,max-age=31536000' })
+      .then(function () { return ref.getDownloadURL(); })
+      .catch(function () { return dataUrl; }); // sin Storage: la foto viaja dentro de los datos
+  }
   function savebar() {
     if (view !== 'admin' || !canEdit) return '';
     var d = dirty();
     var msg = saveState.msg ? '<b>' + esc(saveState.msg) + '</b>'
-      : STANDALONE ? (d ? '<b>Tenés cambios guardados en este navegador.</b> Descargá data.json para publicarlos.' : 'Sin cambios. Editá y después descargá data.json.')
+      : (seedNeeded && !d) ? '<b>Los datos todavía no están en Firebase.</b> Tocá “Guardar y publicar” para cargarlos por primera vez.'
+      : MODE === 'static' ? (d ? '<b>Tenés cambios guardados en este navegador.</b> Descargá data.json para publicarlos.' : 'Sin cambios. Editá y después descargá data.json.')
       : (d ? '<b>Tenés cambios sin publicar.</b> Por ahora solo los ves vos.' : 'Todo publicado.');
     return '<div class="savebar"><div class="savebar-in"><div class="savebar-msg" id="save-msg">' + msg + '</div>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="discard"' + (d && !saveState.busy ? '' : ' disabled') + '>Descartar</button>' +
-      '<button class="btn btn-main btn-sm" type="button" data-act="save"' + ((d || STANDALONE) && !saveState.busy ? '' : ' disabled') + '>' + (saveState.busy ? 'Publicando…' : STANDALONE ? 'Descargar data.json' : 'Guardar y publicar') + '</button>' +
+      '<button class="btn btn-main btn-sm" type="button" data-act="save"' + ((d || MODE === 'static' || seedNeeded) && !saveState.busy ? '' : ' disabled') + '>' + (saveState.busy ? 'Publicando…' : MODE === 'static' ? 'Descargar data.json' : 'Guardar y publicar') + '</button>' +
       '</div></div>';
   }
 
@@ -505,8 +583,31 @@
     }
     refreshSaveBar();
   }
+  function fbSave() {
+    if ((!dirty() && !seedNeeded) || saveState.busy) return;
+    saveState.busy = true; saveState.msg = ''; refreshSaveBar();
+    var clean = JSON.parse(JSON.stringify(data));
+    clean.updatedAt = new Date().toISOString();
+    clean.updatedBy = fbUser ? fbUser.email : '';
+    if (JSON.stringify(clean).length > 950000) {
+      saveState.busy = false;
+      saveState.msg = 'Hay demasiadas fotos guardadas sin Storage. Activá Storage en Firebase para subir más fotos.';
+      refreshSaveBar(); return;
+    }
+    fb.db.collection('site').doc('main').set(clean).then(function () {
+      data = clean; savedJSON = JSON.stringify(data); seedNeeded = false;
+      saveState.busy = false; saveState.msg = 'Publicado. Ya lo ven todos.'; refreshSaveBar();
+    }).catch(function (err) {
+      saveState.busy = false;
+      saveState.msg = (err && err.code === 'permission-denied')
+        ? 'Tu cuenta no tiene permiso para publicar. Revisá que tu mail esté en la lista de administradores.'
+        : 'No se pudo publicar. Revisá la conexión y probá de nuevo.';
+      refreshSaveBar();
+    });
+  }
   function save() {
-    if (STANDALONE) { exportJson(); return; }
+    if (MODE === 'static') { exportJson(); return; }
+    if (MODE === 'firebase') { fbSave(); return; }
     if (!dirty() || saveState.busy) return;
     if (!artifactApi) { saveState.msg = 'No se puede publicar desde esta vista. Abrí la página desde tu cuenta de Claude, con permiso de edición.'; refreshSaveBar(); return; }
     saveState.busy = true; saveState.msg = ''; refreshSaveBar();
@@ -529,6 +630,7 @@
   /* ---------- events ---------- */
   document.addEventListener('click', function (e) {
     var t = e.target;
+    if (t.closest('#send-order')) { logOrder(); return; }
     var goEl = t.closest('[data-go]');
     if (goEl) { e.preventDefault(); go(goEl.getAttribute('data-go')); return; }
     var a = t.closest('[data-act]');
@@ -566,6 +668,17 @@
     }
     else if (act === 'discard') { data = JSON.parse(savedJSON); saveState.msg = ''; render(true); }
     else if (act === 'save') { save(); }
+    else if (act === 'login' && fb) {
+      saveState.msg = '';
+      var prov = new window.firebase.auth.GoogleAuthProvider();
+      prov.setCustomParameters({ prompt: 'select_account' });
+      fb.auth.signInWithPopup(prov).catch(function (err) {
+        if (err && (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment')) fb.auth.signInWithRedirect(prov);
+        else if (err && err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') { saveState.msg = 'No se pudo ingresar. Probá de nuevo.'; render(true); }
+      });
+    }
+    else if (act === 'logout' && fb) { fb.auth.signOut(); }
+    else if (act === 'load-orders') { orders = null; render(true); loadOrders(); }
   });
   function selectText(id) {
     var el = document.getElementById(id); if (!el) return;
@@ -611,10 +724,19 @@
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (t.type === 'checkbox' || t.tagName === 'SELECT') { t.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (t.hasAttribute && t.hasAttribute('data-order') && fb) {
+      var oid = t.getAttribute('data-order'), st = t.value;
+      fb.db.collection('orders').doc(oid).update({ status: st }).then(function () {
+        (orders || []).forEach(function (o) { if (o.id === oid) o.status = st; });
+      }).catch(function () { ordersErr = 'No se pudo cambiar el estado.'; render(true); });
+      return;
+    }
     if (t.type === 'file' && t.files && t.files[0]) {
       var key = t.getAttribute('data-img'), pid = t.getAttribute('data-pimg');
       var ratio = key === 'hero' ? 1.5 : 1, max = key === 'hero' ? 1200 : (pid ? 560 : 720);
-      readFile(t.files[0]).then(function (src) { return cropTo(src, ratio, max); }).then(function (u) {
+      if (MODE === 'firebase') { saveState.msg = 'Subiendo foto…'; refreshSaveBar(); }
+      readFile(t.files[0]).then(function (src) { return cropTo(src, ratio, max); }).then(uploadImage).then(function (u) {
+        if (MODE === 'firebase') saveState.msg = 'Foto subida. Tocá “Guardar y publicar” para aplicarla.';
         if (key) data.images[key] = u;
         if (pid) { var p = prodById(pid); if (p) p.img = u; }
         render(true);
@@ -628,7 +750,7 @@
 
   /* ---------- boot ---------- */
   function storeDraft() {
-    if (!STANDALONE) return;
+    if (MODE !== 'static') return;
     try { if (dirty()) localStorage.setItem('galpon-draft', JSON.stringify(data)); else localStorage.removeItem('galpon-draft'); } catch (e) {}
   }
   document.addEventListener('input', storeDraft);
@@ -636,7 +758,32 @@
   window.addEventListener('change', function () { setTimeout(storeDraft, 400); });
   if (STANDALONE) {
     app.innerHTML = '<div class="wrap" style="padding-block:80px;text-align:center;color:var(--ink-2)">Cargando…</div>';
-    fetch('data.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+    var loadStatic = function () { return fetch('data.json', { cache: 'no-store' }).then(function (r) { return r.json(); }); };
+    if (MODE === 'firebase') {
+      try {
+        window.firebase.initializeApp(window.GALPON_FIREBASE);
+        fb = { auth: window.firebase.auth(), db: window.firebase.firestore(), storage: window.firebase.storage() };
+      } catch (e) { fb = null; MODE = 'static'; }
+    }
+    if (fb) {
+      fb.db.collection('site').doc('main').get().then(function (s) {
+        if (s.exists) return s.data();
+        seedNeeded = true; return loadStatic();
+      }).catch(function () { return loadStatic(); }).then(function (d) {
+        data = d; savedJSON = JSON.stringify(d);
+        render();
+        fb.auth.onAuthStateChanged(function (u) {
+          fbUser = u;
+          canEdit = !!(u && u.email && ADMINS.indexOf(u.email.toLowerCase()) !== -1);
+          if (canEdit) loadOrders(); else orders = null;
+          render(true);
+        });
+      }).catch(function () {
+        app.innerHTML = '<div class="wrap" style="padding-block:80px;text-align:center">No se pudo cargar el catálogo. Recargá la página.</div>';
+      });
+      return;
+    }
+    loadStatic().then(function (d) {
       data = d; savedJSON = JSON.stringify(d);
       canEdit = (location.hash || '') === '#admin';
       if (canEdit) {
