@@ -32,16 +32,15 @@ En [console.firebase.google.com](https://console.firebase.google.com) → proyec
 
 ## Pedidos
 
-Cada vez que alguien toca **Enviar pedido por WhatsApp**, el pedido queda registrado (nombre, barrio, productos y total) en el panel, sección **Pedidos recibidos**, donde le cambiás el estado: Nuevo, Confirmado, Entregado o Cancelado.
+Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda con un número (ej. `#K3F9A`) y se abre WhatsApp con el mensaje ya escrito y ese número; solo tiene que tocar Enviar. En **Panel → Pedidos** los ves todos y les cambiás el estado: Nuevo, Confirmado, Listo para retirar, Entregado o Cancelado.
 
-## Agregar otro administrador
+## Equipo y permisos
 
-Agregá su mail (en minúsculas) en los tres lugares:
-- `firebase-config.js` → `GALPON_ADMINS`
-- `firestore.rules` → lista dentro de `isAdmin()` (y volver a publicar las reglas en la consola)
-- `storage.rules` → la misma lista (y volver a publicar)
+Desde **Panel → Equipo** sumás personas por su mail de Google, sin tocar código:
+- **Carga de productos:** agrega y edita productos, precios, fotos y stock, y ve los pedidos.
+- **Administrador:** además cambia los datos del negocio, las fotos de la página y el equipo.
 
-Después `git add . && git commit -m "Nuevo admin" && git push`.
+Los **dueños** (acceso total permanente) se definen en código: `firebase-config.js` → `GALPON_ADMINS`, y la misma lista en `firestore.rules` y `storage.rules` (volver a publicar las reglas en la consola).
 
 ## Actualizar el código
 

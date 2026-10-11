@@ -2,27 +2,61 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Mails administradores (mismos que en firebase-config.js), en minúsculas.
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    // Dueños: mismos mails que GALPON_ADMINS en firebase-config.js (en minúsculas).
+    function isOwner() {
+      return signedIn() && email() in [
+        'alexgoldenstein@hotmail.com'
+      ];
+    }
+    function teamRole() {
+      return get(/databases/$(database)/documents/team/$(email())).data.role;
+    }
+    function inTeam() {
+      return signedIn() && exists(/databases/$(database)/documents/team/$(email()));
+    }
     function isAdmin() {
-      return request.auth != null
-        && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() in [
-          'alexgoldenstein@hotmail.com'
-        ];
+      return isOwner() || (inTeam() && teamRole() == 'admin');
+    }
+    function isStaff() {
+      return isAdmin() || (inTeam() && teamRole() == 'editor');
     }
 
-    // Datos del sitio: cualquiera los lee, solo administradores los cambian.
+    // Datos del negocio: todos leen, solo administradores cambian.
     match /site/{doc} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Pedidos: cualquiera puede registrar uno nuevo (con formato controlado);
-    // solo administradores los ven y cambian de estado.
+    // Productos: todos leen; administradores y "carga de productos" editan.
+    match /products/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+
+    // Equipo: cada persona puede leer su propio permiso; administradores gestionan.
+    match /team/{memberEmail} {
+      allow read: if isAdmin() || (signedIn() && email() == memberEmail);
+      allow write: if isAdmin() && request.resource.data.role in ['admin', 'editor'];
+      allow delete: if isAdmin();
+    }
+
+    // Pedidos: cualquiera registra uno nuevo con formato controlado;
+    // el equipo los ve y cambia el estado; solo administradores borran.
     match /orders/{orderId} {
-      allow read, update, delete: if isAdmin();
-      allow create: if request.resource.data.keys().hasOnly(['name', 'barrio', 'items', 'total', 'status', 'createdAt'])
+      allow read: if isStaff();
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['nuevo', 'confirmado', 'listo', 'entregado', 'cancelado'];
+      allow delete: if isAdmin();
+      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'items', 'total', 'status', 'createdAt'])
         && request.resource.data.status == 'nuevo'
+        && request.resource.data.code is string && request.resource.data.code.size() <= 10
         && request.resource.data.name is string && request.resource.data.name.size() <= 80
         && request.resource.data.barrio is string && request.resource.data.barrio.size() <= 80
         && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 50
@@ -30,7 +64,6 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
-    // Todo lo demás, cerrado.
     match /{document=**} {
       allow read, write: if false;
     }
