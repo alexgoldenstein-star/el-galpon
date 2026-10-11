@@ -328,3 +328,8 @@ body.lock{overflow:hidden}
 .roles{margin:0;padding-left:18px;color:var(--ink-2);display:flex;flex-direction:column;gap:4px}
 .admin-top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px}
 .admin .admin-note{align-items:flex-start}
+.login-msg{background:var(--warn-bg);color:var(--warn);border-radius:12px;padding:10px 12px;font-weight:600;font-size:15px}
+.login-links{display:flex;flex-wrap:wrap;gap:8px 18px}
+.login-links .linkbtn{min-height:44px}
+.login-sep{display:flex;align-items:center;gap:10px;color:var(--ink-3);font-size:14px}
+.login-sep::before,.login-sep::after{content:"";flex:1;height:1px;background:var(--line)}

@@ -349,12 +349,74 @@
   }
 
   /* ================= panel ================= */
+  var loginMode = 'login'; // login | signup | reset
+  var loginMsg = '';
+  var loginEmail = '', loginPass = '';
   function loginPanel() {
-    var msg;
-    if (!authReady) msg = '<p>Cargando…</p>';
-    else if (user) msg = '<p>Entraste como <b>' + esc(user.email) + '</b>, pero esa cuenta no tiene acceso al panel. Pedile al administrador que te sume en “Equipo”.</p><button class="btn btn-line btn-sm" type="button" data-act="logout">Salir y entrar con otra cuenta</button>';
-    else msg = '<p>Ingresá con tu cuenta de Google para cargar productos y ver pedidos.</p><button class="btn btn-main" type="button" data-act="login">Ingresar con Google</button>';
-    return '<div class="wrap admin"><div class="panel" style="max-width:520px"><h2>Panel</h2>' + msg + '</div></div>';
+    var body;
+    if (!authReady) body = '<p>Cargando…</p>';
+    else if (user && !user.emailVerified) {
+      body = '<p>Te mandamos un mail a <b>' + esc(user.email) + '</b> para verificar tu cuenta. Abrí el link (revisá también correo no deseado) y después tocá “Ya verifiqué”.</p>' +
+        '<div class="ctas"><button class="btn btn-main btn-sm" type="button" data-act="verified">Ya verifiqué</button>' +
+        '<button class="btn btn-line btn-sm" type="button" data-act="resend">Reenviar mail</button>' +
+        '<button class="btn btn-line btn-sm" type="button" data-act="logout">Salir</button></div>';
+    }
+    else if (user) body = '<p>Entraste como <b>' + esc(user.email) + '</b>, pero esa cuenta todavía no tiene acceso al panel. Pedile al administrador que te sume en “Equipo” con este mismo mail.</p><button class="btn btn-line btn-sm" type="button" data-act="logout">Salir y entrar con otra cuenta</button>';
+    else {
+      var title = loginMode === 'signup' ? 'Crear tu acceso' : loginMode === 'reset' ? 'Recuperar contraseña' : 'Ingresar';
+      body = '<p style="color:var(--ink-2)">' + (loginMode === 'signup'
+        ? 'Usá el mismo mail con el que te sumaron al equipo. Te vamos a mandar un mail para verificarlo.'
+        : loginMode === 'reset' ? 'Te mandamos un link para crear una contraseña nueva.'
+        : 'Con tu mail y contraseña, o con tu cuenta de Google.') + '</p>' +
+        '<form id="login-form" style="display:flex;flex-direction:column;gap:12px" novalidate>' +
+        '<div class="fld"><label for="l-email">Mail</label><input id="l-email" type="email" autocomplete="email" required value="' + esc(loginEmail) + '"></div>' +
+        (loginMode !== 'reset' ? '<div class="fld"><label for="l-pass">Contraseña' + (loginMode === 'signup' ? ' (mínimo 6 caracteres)' : '') + '</label><input id="l-pass" type="password" autocomplete="' + (loginMode === 'signup' ? 'new-password' : 'current-password') + '" required value="' + esc(loginPass) + '"></div>' : '') +
+        '<button class="btn btn-main" type="submit"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Un momento…' : loginMode === 'signup' ? 'Crear acceso' : loginMode === 'reset' ? 'Mandarme el link' : 'Ingresar') + '</button>' +
+        '</form>' +
+        (loginMsg ? '<p class="login-msg">' + esc(loginMsg) + '</p>' : '') +
+        '<div class="login-links">' +
+        (loginMode !== 'login' ? '<button type="button" class="linkbtn" data-act="mode" data-mode="login">Ya tengo acceso: ingresar</button>' : '<button type="button" class="linkbtn" data-act="mode" data-mode="signup">Es mi primera vez: crear acceso</button><button type="button" class="linkbtn" data-act="mode" data-mode="reset">Olvidé mi contraseña</button>') +
+        '</div>' +
+        '<div class="login-sep"><span>o</span></div>' +
+        '<button class="btn btn-line" type="button" data-act="login">Ingresar con Google</button>';
+      return '<div class="wrap admin"><div class="panel" style="max-width:460px"><h2>' + title + '</h2>' + body + '</div></div>';
+    }
+    return '<div class="wrap admin"><div class="panel" style="max-width:520px"><h2>Panel</h2>' + body +
+      (loginMsg ? '<p class="login-msg">' + esc(loginMsg) + '</p>' : '') + '</div></div>';
+  }
+  var AUTH_ERR = {
+    'auth/invalid-email': 'Ese mail no es válido.',
+    'auth/missing-password': 'Escribí tu contraseña.',
+    'auth/weak-password': 'La contraseña tiene que tener al menos 6 caracteres.',
+    'auth/email-already-in-use': 'Ese mail ya tiene acceso. Ingresá, o usá “Olvidé mi contraseña”.',
+    'auth/invalid-credential': 'Mail o contraseña incorrectos.',
+    'auth/wrong-password': 'Mail o contraseña incorrectos.',
+    'auth/user-not-found': 'No hay un acceso con ese mail. Tocá “Es mi primera vez”.',
+    'auth/too-many-requests': 'Demasiados intentos. Esperá unos minutos.',
+    'auth/operation-not-allowed': 'Este método de ingreso no está activado en Firebase (Authentication → Sign-in method).',
+    'auth/unauthorized-domain': 'Falta agregar este dominio en Firebase → Authentication → Settings → Authorized domains.',
+    'auth/configuration-not-found': 'Authentication no está configurado en Firebase. Activá los métodos de ingreso.',
+    'auth/network-request-failed': 'Sin conexión. Revisá internet y probá de nuevo.'
+  };
+  function authError(err) {
+    var c = err && err.code;
+    return AUTH_ERR[c] || ('No se pudo ingresar (' + (c || 'error desconocido') + ').');
+  }
+  function emailLogin() {
+    var em = (document.getElementById('l-email') || {}).value || '';
+    var pw = (document.getElementById('l-pass') || {}).value || '';
+    em = em.trim().toLowerCase();
+    loginMsg = ''; busy = true; render(true);
+    var done = function (m) { busy = false; loginMsg = m || ''; render(true); };
+    if (loginMode === 'reset') {
+      fb.auth.sendPasswordResetEmail(em).then(function () { loginMode = 'login'; done('Listo: revisá tu mail (y correo no deseado) para crear la contraseña nueva.'); }).catch(function (e) { done(authError(e)); });
+    } else if (loginMode === 'signup') {
+      fb.auth.createUserWithEmailAndPassword(em, pw).then(function (cred) {
+        return cred.user.sendEmailVerification();
+      }).then(function () { done(''); }).catch(function (e) { done(authError(e)); });
+    } else {
+      fb.auth.signInWithEmailAndPassword(em, pw).then(function () { done(''); }).catch(function (e) { done(authError(e)); });
+    }
   }
   function tabs() {
     var list = [['pedidos', 'Pedidos'], ['productos', 'Productos']];
@@ -498,11 +560,11 @@
         '<button class="del" type="button" data-act="del-member" data-id="' + esc(m.id) + '">Quitar</button></div>';
     });
     return '<div class="panel"><h2>Equipo</h2>' +
-      '<p>Sumá a las personas que te ayudan. Entran con su cuenta de Google en esta misma página, en Panel.</p>' +
+      '<p>Sumá a las personas que te ayudan. Después entran a esta página en Panel: la primera vez tocan “Es mi primera vez: crear acceso” con ese mismo mail (o usan “Ingresar con Google” si es una cuenta de Google).</p>' +
       '<ul class="roles"><li><b>Carga de productos:</b> agrega y edita productos, precios, fotos y stock, y ve los pedidos.</li><li><b>Administrador:</b> además cambia los datos del negocio, las fotos de la página y el equipo.</li></ul>' +
       '<div class="tlist">' + rows + '</div>' +
       '<div class="form-grid" style="align-items:end">' +
-      '<div class="fld"><label for="m-email">Mail de Google</label><input id="m-email" type="email" placeholder="nombre@gmail.com" autocomplete="off"></div>' +
+      '<div class="fld"><label for="m-email">Mail</label><input id="m-email" type="email" placeholder="nombre@gmail.com" autocomplete="off"></div>' +
       '<div class="fld"><label for="m-role">Permiso</label><select id="m-role"><option value="editor">Carga de productos</option><option value="admin">Administrador</option></select></div>' +
       '<button class="btn btn-main btn-sm" type="button" data-act="add-member"' + (busy ? ' disabled' : '') + '>' + ic('plus', 18) + 'Sumar al equipo</button>' +
       '</div></div>';
@@ -741,14 +803,25 @@
       case 'login': {
         var prov = new window.firebase.auth.GoogleAuthProvider();
         prov.setCustomParameters({ prompt: 'select_account' });
+        loginMsg = '';
         fb.auth.signInWithPopup(prov).catch(function (err) {
           if (err && (err.code === 'auth/popup-blocked' || err.code === 'auth/operation-not-supported-in-this-environment')) fb.auth.signInWithRedirect(prov);
-          else if (err && err.code === 'auth/unauthorized-domain') setToast('Falta agregar este dominio en Firebase → Authentication → Settings → Authorized domains.');
-          else if (err && err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') setToast('No se pudo ingresar. Probá de nuevo.');
+          else if (err && err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') { loginMsg = authError(err); render(true); }
         });
         break;
       }
-      case 'logout': fb.auth.signOut(); break;
+      case 'mode': loginMode = a.getAttribute('data-mode'); loginMsg = ''; render(true); break;
+      case 'resend':
+        if (user) user.sendEmailVerification().then(function () { loginMsg = 'Te reenviamos el mail de verificación.'; render(true); }).catch(function (e) { loginMsg = authError(e); render(true); });
+        break;
+      case 'verified':
+        if (user) user.reload().then(function () { return fb.auth.currentUser.getIdToken(true); }).then(function () {
+          user = fb.auth.currentUser;
+          if (!user.emailVerified) { loginMsg = 'Todavía no figura verificado. Abrí el link del mail y probá de nuevo.'; render(true); return; }
+          loginMsg = ''; resolveRole(user);
+        }).catch(function (e) { loginMsg = authError(e); render(true); });
+        break;
+      case 'logout': loginMsg = ''; loginMode = 'login'; fb.auth.signOut(); break;
       case 'tab': adminTab = a.getAttribute('data-tab'); if (adminTab === 'equipo' && !team) loadTeam(); if (adminTab === 'negocio' && !cfgDraft) cfgDraft = cfgBase(); render(); break;
       case 'load-orders': orders = null; render(true); loadOrders(); break;
       case 'seed': seed(); break;
@@ -778,6 +851,8 @@
   document.addEventListener('input', function (e) {
     var t = e.target;
     if (t.id === 'q') { query = t.value; render(true); return; }
+    if (t.id === 'l-email') { loginEmail = t.value; return; }
+    if (t.id === 'l-pass') { loginPass = t.value; return; }
     if (t.hasAttribute('data-buyer')) {
       buyer[t.getAttribute('data-buyer')] = t.value; persistCart();
       var btn = document.getElementById('send-order'), hint = document.getElementById('send-hint');
@@ -828,6 +903,9 @@
       }
     }
   });
+  document.addEventListener('submit', function (e) {
+    if (e.target && e.target.id === 'login-form') { e.preventDefault(); emailLogin(); }
+  });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
@@ -873,20 +951,26 @@
       else { products = s.products; needSeed.products = true; }
       cfg.contact = cfg.contact || {}; cfg.settings = cfg.settings || { minOrder: 0 }; cfg.captions = cfg.captions || {}; cfg.images = cfg.images || {};
       start();
+      fb.auth.getRedirectResult().catch(function (err) { if (err && err.code) { loginMsg = authError(err); render(true); } });
       fb.auth.onAuthStateChanged(function (u) {
         user = u; role = null; authReady = true;
         if (!u) { orders = null; team = null; render(true); return; }
-        var em = String(u.email || '').toLowerCase();
-        if (OWNERS.indexOf(em) !== -1) { role = 'owner'; afterLogin(); return; }
-        fb.db.collection('team').doc(em).get().then(function (d) {
-          role = d.exists && (d.data().role === 'admin' || d.data().role === 'editor') ? d.data().role : null;
-          afterLogin();
-        }).catch(function () { afterLogin(); });
+        resolveRole(u);
       });
     });
   }).catch(function () {
     app.innerHTML = '<div class="wrap" style="padding-block:80px;text-align:center">No se pudo cargar el catálogo. Recargá la página.</div>';
   });
+  function resolveRole(u) {
+    role = null;
+    if (!u.emailVerified) { render(true); return; }
+    var em = String(u.email || '').toLowerCase();
+    if (OWNERS.indexOf(em) !== -1) { role = 'owner'; afterLogin(); return; }
+    fb.db.collection('team').doc(em).get().then(function (d) {
+      role = d.exists && (d.data().role === 'admin' || d.data().role === 'editor') ? d.data().role : null;
+      afterLogin();
+    }).catch(function () { afterLogin(); });
+  }
   function afterLogin() {
     if (isStaff()) { loadOrders(); if (adminTab === 'equipo') loadTeam(); }
     render(true);

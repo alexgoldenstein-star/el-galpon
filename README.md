@@ -18,7 +18,7 @@ Landing + catálogo para revendedores, con pedido por WhatsApp. Sitio estático 
 
 En [console.firebase.google.com](https://console.firebase.google.com) → proyecto **el-galpon-b3cac**:
 
-1. **Authentication → Sign-in method → Google → Habilitar.**
+1. **Authentication → Sign-in method:** habilitá **Correo electrónico/contraseña** (para cualquier mail: Hotmail, Gmail, etc.) y **Google**.
 2. **Authentication → Settings → Authorized domains:** agregá el dominio de Vercel (por ejemplo `el-galpon.vercel.app`) y tu dominio propio si lo tenés.
 3. **Firestore Database → Crear base de datos** (ubicación `southamerica-east1`, São Paulo). Después, en la pestaña **Reglas**, pegá el contenido de `firestore.rules` y **Publicar**.
 4. **Storage → Comenzar.** Pide pasar al plan Blaze (pago por uso, con cuota gratis que este sitio no va a superar; hay que cargar una tarjeta). En **Reglas**, pegá `storage.rules` y **Publicar**.
@@ -27,7 +27,7 @@ En [console.firebase.google.com](https://console.firebase.google.com) → proyec
 ## Primer uso del panel
 
 1. Entrá a `https://tu-sitio.vercel.app/#admin` (si ya estaba abierta, recargá con F5).
-2. **Ingresar con Google** con un mail administrador.
+2. La primera vez tocá **“Es mi primera vez: crear acceso”** con tu mail, verificalo desde el mail que te llega y tocá **“Ya verifiqué”** (o usá **Ingresar con Google** si es una cuenta de Google).
 3. Vas a ver el aviso “Los datos todavía no están en Firebase”. Completá WhatsApp, dirección, horarios, razón social, CUIT, etc. y tocá **Guardar y publicar**. Desde ahí, todo se edita y publica al instante, sin GitHub.
 
 ## Pedidos
