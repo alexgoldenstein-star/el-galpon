@@ -50,7 +50,8 @@ Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda co
 2. **Asignación del cliente:** el feriante queda a nombre del vendedor si entra por su link, si escribe su código en el carrito o si ya era su cliente (por teléfono). El primero que lo trajo lo conserva mientras compre: vence a los 6 meses sin compras. Desde el pedido podés reasignarlo a mano.
 3. **Comisión:** se calcula al marcar el pedido como Entregado, sobre los productos (el envío no suma), con el % de cada rubro. Si el vendedor fue sumado por otro, el que lo sumó cobra un extra durante los primeros meses. Un solo nivel.
 4. **Liquidación:** en Vendedores, “Liquidar” registra el pago de todo lo pendiente y marca esos pedidos como pagados. Un pedido liquidado ya no se puede cancelar ni reasignar.
-5. **Transparencia:** las reglas se muestran iguales en la web (Contacto → Quiero ser vendedor) y en el panel de cada vendedor, con sus pedidos, clientes, equipo y liquidaciones.
+5. **Cartel con QR:** cada vendedor genera su cartel desde su panel (“Cartel con tu QR para la feria”), y vos desde Panel → Vendedores → “Cartel con QR”. Hay dos formatos: A4 para imprimir y vertical para estados. El QR lleva al catálogo con su código, así todo lo que entra por ahí queda a su nombre.
+6. **Transparencia:** las reglas se muestran iguales en la web (Contacto → Quiero ser vendedor) y en el panel de cada vendedor, con sus pedidos, clientes, equipo y liquidaciones.
 
 ## Equipo y permisos
 

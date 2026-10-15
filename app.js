@@ -1289,6 +1289,7 @@
           '<div class="sactions">' +
           (st.pending > 0 ? '<button class="btn btn-main btn-sm" type="button" data-act="payout" data-code="' + esc(code) + '">Liquidar ' + money(st.pending) + ' (' + st.pendingN + ')</button>' : '') +
           (wa ? '<a class="btn btn-line btn-sm" href="' + esc(wa) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Mandarle su link</a>' : '') +
+          '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-code="' + esc(code) + '">Cartel con QR</button>' +
           '<button class="linkbtn" type="button" data-act="seller-toggle" data-code="' + esc(code) + '">' + (off ? 'Reactivar' : 'Pausar') + '</button>' +
           '</div>' +
           (s.email ? '<p class="hint">Entra a su panel con ' + esc(s.email) + '</p>'
@@ -1455,6 +1456,7 @@
       '<div style="display:flex;flex-direction:column;gap:10px;min-width:0">' +
       '<div class="linkrow"><input readonly value="' + esc(link) + '" aria-label="Tu link"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(link) + '">Copiar</button></div>' +
       '<a class="btn btn-main btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareFeriante) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Mandar el catálogo a un feriante</a>' +
+      '<button class="btn btn-dark btn-sm" type="button" data-act="poster" data-code="' + esc(sellerCode) + '">' + ic('camera', 18) + 'Cartel con tu QR para la feria</button>' +
       (Number(comm().override) > 0 ? '<a class="btn btn-line btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareVend) + '" target="_blank" rel="noopener">' + ic('users', 18) + 'Invitar a otro vendedor</a>' : '') +
       '</div></div></div>' +
       '<div class="panel"><h2>Pedidos de tus clientes</h2>' +
@@ -1532,6 +1534,169 @@
       '</div>';
   }
 
+  /* ================= cartel con QR por vendedor ================= */
+  var poster = null; // { code, name, phone, kind: 'a4' | 'story', showPhone, url, busy }
+  function loadQRLib() {
+    return new Promise(function (res, rej) {
+      if (window.QRCode) { res(); return; }
+      var sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      sc.onload = function () { res(); }; sc.onerror = rej;
+      document.head.appendChild(sc);
+    });
+  }
+  function qrCanvas(text, size) {
+    var div = document.createElement('div');
+    new window.QRCode(div, { text: text, width: size, height: size, colorDark: '#1E2A5A', colorLight: '#FFFFFF', correctLevel: window.QRCode.CorrectLevel.H });
+    return div.querySelector('canvas');
+  }
+  function rrect(g, x, y, w, h, r) {
+    g.beginPath(); g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r);
+    g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h); g.lineTo(x + r, y + h);
+    g.quadraticCurveTo(x, y + h, x, y + h - r); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); g.closePath();
+  }
+  function fmtPhone(p) {
+    var d = digits(p);
+    if (d.indexOf('549') === 0) d = d.slice(3); else if (d.indexOf('54') === 0 && d.length === 12) d = d.slice(2);
+    if (d.length === 10 && d.indexOf('11') === 0) return '11 ' + d.slice(2, 6) + '-' + d.slice(6);
+    if (d.length === 10) return d.slice(0, 3) + ' ' + d.slice(3, 6) + '-' + d.slice(6);
+    return p || '';
+  }
+  function makePoster(pz) {
+    var story = pz.kind === 'story';
+    var W = story ? 1080 : 1654, H = story ? 1920 : 2339, s = W / 1080;
+    var link = sellerLink(pz.code);
+    var D = '"Bricolage Grotesque", Figtree, system-ui, sans-serif', B = 'Figtree, system-ui, sans-serif';
+    var fontsReady = document.fonts ? Promise.all([
+      document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('700 40px Figtree'), document.fonts.load('500 40px Figtree')
+    ]).catch(function () {}) : Promise.resolve();
+    return Promise.all([loadQRLib(), fontsReady]).then(function () {
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      var g = cv.getContext('2d');
+      var qr = qrCanvas(link, 800);
+      var minQR = W * (story ? 0.52 : 0.46);
+      var t = s, qrSize = 0;
+      for (var i = 0; i < 8; i++) { qrSize = drawPoster(g, t); if (qrSize >= minQR) break; t *= 0.92; }
+      drawPoster(g, t, qr);
+      return cv.toDataURL('image/png');
+
+      function drawPoster(g, t, qrImg) {
+        var NAVY = '#1E2A5A', ORANGE = '#FF6B1A', CREAM = '#FFF8F0', GREEN = '#15803D', M = 72 * s;
+        g.setTransform(1, 0, 0, 1, 0, 0); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+        g.fillStyle = CREAM; g.fillRect(0, 0, W, H);
+        var top = (story ? 250 : 210) * t;
+        g.fillStyle = ORANGE; g.fillRect(0, 0, W, top);
+        var ls = 104 * t, lx = M, ly = top / 2 - ls / 2;
+        g.fillStyle = NAVY; rrect(g, lx, ly, ls, ls, 24 * t); g.fill();
+        g.save(); g.translate(lx + ls * 0.16, ly + ls * 0.16); g.scale(ls / 30, ls / 30);
+        g.strokeStyle = ORANGE; g.lineWidth = 2.6; g.lineCap = 'round'; g.lineJoin = 'round';
+        g.beginPath(); g.moveTo(1, 9.5); g.lineTo(10, 3); g.lineTo(19, 9.5); g.moveTo(3, 8.5); g.lineTo(3, 19); g.lineTo(17, 19); g.lineTo(17, 8.5); g.moveTo(7, 19); g.lineTo(7, 13); g.lineTo(13, 13); g.lineTo(13, 19); g.stroke();
+        g.restore();
+        g.fillStyle = NAVY; g.textBaseline = 'middle';
+        g.font = '800 ' + Math.round(76 * t) + 'px ' + D;
+        g.fillText(cfg.brand.name, lx + ls + 28 * t, top / 2 + 2 * t);
+        g.textBaseline = 'alphabetic';
+        var y = top + 140 * t;
+        g.fillStyle = NAVY; g.font = '800 ' + Math.round(104 * t) + 'px ' + D;
+        ['Precios de depósito', 'para tu puesto'].forEach(function (ln) { g.fillText(ln, M, y); y += 108 * t; });
+        y += 4 * t;
+        g.fillStyle = '#4A5380'; g.font = '600 ' + Math.round(36 * t) + 'px ' + B;
+        y += wrapText(g, (cfg.categories || []).slice(0, 7).join(' · '), M, y, W - 2 * M, 48 * t, 2) * 48 * t + 34 * t;
+        [
+          'Ves tu ganancia en cada producto antes de comprar',
+          'Pedís por WhatsApp en un minuto',
+          shipOn() ? 'Retirás en el depósito o te lo enviamos' : 'Retirás en el depósito, sin vueltas'
+        ].forEach(function (b) {
+          var cx = M + 22 * t, cy = y - 13 * t;
+          g.fillStyle = GREEN; g.beginPath(); g.arc(cx, cy, 22 * t, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = '#FFFFFF'; g.lineWidth = 5 * t; g.lineCap = 'round'; g.lineJoin = 'round';
+          g.beginPath(); g.moveTo(cx - 10 * t, cy); g.lineTo(cx - 3 * t, cy + 8 * t); g.lineTo(cx + 11 * t, cy - 8 * t); g.stroke();
+          g.fillStyle = NAVY; g.font = '600 ' + Math.round(36 * t) + 'px ' + B;
+          y += wrapText(g, b, M + 64 * t, y, W - 2 * M - 64 * t, 46 * t, 2) * 46 * t + 22 * t;
+        });
+        var bottomBand = 150 * t;
+        var cardX = M, cardW = W - 2 * M, cardY = y + 16 * t, cardH = H - bottomBand - 56 * t - cardY;
+        var phone = pz.showPhone && pz.phone;
+        var infoH = (phone ? 240 : 180) * t;
+        var qrSize = Math.min(cardW - 120 * t, cardH - 130 * t - infoH);
+        if (!qrImg) return qrSize;
+        // la tarjeta se ajusta al contenido y queda centrada en el espacio libre
+        var used = 130 * t + qrSize + infoH;
+        cardY = cardY + Math.max(0, (cardH - used) / 2); cardH = used;
+        g.fillStyle = 'rgba(30,42,90,0.10)'; rrect(g, cardX + 6 * t, cardY + 10 * t, cardW, cardH, 40 * t); g.fill();
+        g.fillStyle = '#FFFFFF'; rrect(g, cardX, cardY, cardW, cardH, 40 * t); g.fill();
+        g.strokeStyle = '#F0DCC8'; g.lineWidth = 3 * t; rrect(g, cardX, cardY, cardW, cardH, 40 * t); g.stroke();
+        g.textAlign = 'center';
+        g.fillStyle = NAVY; g.font = '800 ' + Math.round(52 * t) + 'px ' + D;
+        g.fillText('Escaneá y mirá el catálogo', W / 2, cardY + 82 * t);
+        var qy = cardY + 116 * t;
+        g.imageSmoothingEnabled = false;
+        g.drawImage(qrImg, (W - qrSize) / 2, qy, qrSize, qrSize);
+        g.imageSmoothingEnabled = true;
+        var iy = qy + qrSize + 66 * t;
+        var pre = 'Te atiende ', nm = String(pz.name || '').split(' ')[0];
+        g.font = '800 ' + Math.round(46 * t) + 'px ' + D; var wName = g.measureText(nm).width;
+        g.font = '500 ' + Math.round(40 * t) + 'px ' + B; var wPre = g.measureText(pre).width;
+        var st = W / 2 - (wPre + wName) / 2;
+        g.textAlign = 'left'; g.fillStyle = '#4A5380'; g.fillText(pre, st, iy);
+        g.fillStyle = NAVY; g.font = '800 ' + Math.round(46 * t) + 'px ' + D; g.fillText(nm, st + wPre, iy);
+        g.textAlign = 'center';
+        var chip = 'Código ' + pz.code;
+        g.font = '800 ' + Math.round(34 * t) + 'px ' + B;
+        var cw = g.measureText(chip).width + 52 * t, chy = iy + 26 * t;
+        g.fillStyle = NAVY; rrect(g, W / 2 - cw / 2, chy, cw, 60 * t, 30 * t); g.fill();
+        g.fillStyle = '#FFFFFF'; g.fillText(chip, W / 2, chy + 42 * t);
+        if (phone) { g.fillStyle = '#4A5380'; g.font = '600 ' + Math.round(36 * t) + 'px ' + B; g.fillText('WhatsApp ' + fmtPhone(pz.phone), W / 2, chy + 116 * t); }
+        g.fillStyle = NAVY; g.fillRect(0, H - bottomBand, W, bottomBand);
+        g.fillStyle = '#FFFFFF'; g.font = '700 ' + Math.round(36 * t) + 'px ' + B;
+        g.fillText(location.host.replace(/^www\./, '') + '/?v=' + pz.code, W / 2, H - bottomBand / 2 - 4 * t);
+        g.fillStyle = '#C9CFE6'; g.font = '500 ' + Math.round(27 * t) + 'px ' + B;
+        g.fillText('Sin cuota ni inscripción · ' + (cfg.brand.tagline || ''), W / 2, H - bottomBand / 2 + 38 * t);
+        return qrSize;
+      }
+    });
+  }
+  function openPoster(code) {
+    var info = null;
+    if (isSeller() && sellerData && sellerData.me) info = { name: sellerData.me.name, phone: sellerData.me.phone };
+    else if (sellersMap[code]) info = { name: sellersMap[code].name, phone: sellersMap[code].phone };
+    if (!info) return;
+    poster = { code: code, name: info.name, phone: info.phone, kind: 'a4', showPhone: true, url: null };
+    render(true); buildPoster();
+  }
+  function buildPoster() {
+    if (!poster) return;
+    var pz = poster; pz.url = null; render(true);
+    makePoster(pz).then(function (u) { if (poster === pz) { pz.url = u; render(true); } })
+      .catch(function () { if (poster === pz) { poster = null; setToast('No se pudo armar el cartel. Revisá la conexión y probá de nuevo.'); } });
+  }
+  function posterModal() {
+    if (!poster) return '';
+    var pz = poster, fname = 'cartel-' + pz.code + (pz.kind === 'story' ? '-estados' : '-a4') + '.png';
+    var canShare = !!(navigator.canShare && window.File);
+    return '<div class="modal-wrap" data-act="close-poster" style="z-index:60"><div class="modal poster-modal" role="dialog" aria-modal="true" aria-label="Cartel con QR" data-stop="1">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:22px">Cartel de ' + esc(String(pz.name).split(' ')[0]) + '</h2><button class="x" type="button" data-act="close-poster" aria-label="Cerrar">' + ic('x') + '</button></div>' +
+      '<div class="ptabs" role="tablist">' +
+      '<button type="button" role="tab" class="chip' + (pz.kind === 'a4' ? ' on' : '') + '" aria-selected="' + (pz.kind === 'a4') + '" data-act="poster-kind" data-kind="a4">Para imprimir (A4)</button>' +
+      '<button type="button" role="tab" class="chip' + (pz.kind === 'story' ? ' on' : '') + '" aria-selected="' + (pz.kind === 'story') + '" data-act="poster-kind" data-kind="story">Para estados</button>' +
+      '</div>' +
+      (pz.phone ? '<label class="check"><input type="checkbox" id="poster-phone" data-act-check="poster-phone"' + (pz.showPhone ? ' checked' : '') + '>Mostrar el WhatsApp del vendedor</label>' : '') +
+      '<div class="poster-prev' + (pz.kind === 'story' ? ' story' : '') + '">' + (pz.url ? '<img src="' + pz.url + '" alt="Cartel con el QR de ' + esc(pz.name) + '">' : '<div class="empty">Armando el cartel…</div>') + '</div>' +
+      '<p class="hint">' + (pz.kind === 'a4' ? 'Imprimilo en A4, a color, y pegalo en el puesto o en la mesa. El QR lleva al catálogo y todo lo que pidan queda a nombre de ' + esc(String(pz.name).split(' ')[0]) + '.' : 'Subilo a los estados de WhatsApp o a Instagram. El QR también funciona desde otra pantalla.') + '</p>' +
+      '<div class="ctas">' +
+      (pz.url ? '<a class="btn btn-main btn-sm" href="' + pz.url + '" download="' + fname + '">Descargar</a>' : '') +
+      (pz.url && canShare ? '<button class="btn btn-line btn-sm" type="button" data-act="poster-share">' + ic('share', 18) + 'Compartir</button>' : '') +
+      '</div></div></div>';
+  }
+  function sharePoster() {
+    if (!poster || !poster.url) return;
+    fetch(poster.url).then(function (r) { return r.blob(); }).then(function (blob) {
+      var file = new File([blob], 'cartel-' + poster.code + '.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file], text: 'Catálogo de ' + cfg.brand.name + ': ' + sellerLink(poster.code) });
+      setToast('Tu celular no permite compartir directo. Usá “Descargar”.', true);
+    }).catch(function () {});
+  }
+
   /* ================= render ================= */
   function render(keepScroll) {
     if (!cfg) return;
@@ -1540,10 +1705,10 @@
     var main = view === 'catalogo' ? catalog() : view === 'admin' ? adminView() : view === 'contacto' ? contactView() : landing();
     var t = cartTotals();
     document.body.classList.toggle('has-cart', !!t.count && view !== 'admin');
-    document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing));
+    document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster));
     app.innerHTML = header() + '<main>' + main + '</main>' + (view === 'admin' ? '' : footer()) +
       (view === 'admin' ? '' : '<a class="wa-float" href="' + esc(waLink('Hola ' + cfg.brand.name + '!')) + '" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">' + ic('wa', 30) + '</a>') +
-      cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor();
+      cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal();
     if (keepScroll) window.scrollTo(0, y);
     if (view === 'admin' && isSeller()) drawQR();
     if (active) {
@@ -1832,6 +1997,10 @@
       case 'seller-toggle': toggleSeller(a.getAttribute('data-code')); break;
       case 'seller-access': giveAccess(a.getAttribute('data-code')); break;
       case 'payout': liquidate(a.getAttribute('data-code'), a); break;
+      case 'poster': openPoster(a.getAttribute('data-code')); break;
+      case 'close-poster': poster = null; render(true); break;
+      case 'poster-kind': if (poster && poster.kind !== a.getAttribute('data-kind')) { poster.kind = a.getAttribute('data-kind'); buildPoster(); } break;
+      case 'poster-share': sharePoster(); break;
       case 'lead-seller': {
         var ld = (leads || []).filter(function (l) { return l.id === id; })[0]; if (!ld) break;
         sellerForm = { name: ld.name || '', phone: ld.phone || '', code: suggestCode(ld.name), zone: ld.zone || '', recruitedBy: ld.ref && sellersMap[ld.ref] ? ld.ref : '', email: ld.email || '', leadId: ld.id };
@@ -1935,6 +2104,7 @@
     var t = e.target;
     if (t.type === 'checkbox' || t.tagName === 'SELECT') t.dispatchEvent(new Event('input', { bubbles: true }));
     if (t.id === 'rsort') { rSort = t.value; render(true); return; }
+    if (t.id === 'poster-phone' && poster) { poster.showPhone = t.checked; buildPoster(); return; }
     if (t.hasAttribute('data-rnote') && fb) {
       var rk = t.getAttribute('data-rnote'), nv = t.value.slice(0, 300);
       fb.db.collection('resellers').doc(rk).set({ note: nv, updatedBy: user ? user.email : '', updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).then(function () {
@@ -2000,7 +2170,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
+    if (poster) poster = null; else if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
     render(true);
   });
   window.addEventListener('hashchange', function () {

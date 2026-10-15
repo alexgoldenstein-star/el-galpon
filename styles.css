@@ -538,3 +538,10 @@ details.rules-box[open] summary{margin-bottom:8px}
 .cat-block-head > div{display:flex;flex-direction:column;gap:2px}
 .cat-count{font-size:14px;color:var(--ink-3);font-weight:600}
 .cat-block:first-child .cat-block-head{border-bottom-color:var(--orange)}
+
+/* ===== v7: cartel con QR ===== */
+.poster-modal{width:min(560px,100%)}
+.ptabs{display:flex;gap:8px;flex-wrap:wrap}
+.poster-prev{background:var(--surface-2);border-radius:14px;padding:12px;display:grid;place-items:center;min-height:240px}
+.poster-prev img{width:100%;max-width:380px;border-radius:6px;box-shadow:var(--shadow)}
+.poster-prev.story img{max-width:260px}
