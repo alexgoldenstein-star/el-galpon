@@ -40,7 +40,7 @@ Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda co
 - **Clientes:** feriantes y revendedores que compraron, con su vendedor asignado.
 - **Vendedores** (administradores): alta de vendedores con su código y link, clientes, ventas, comisión a cobrar y cobrada, botón **Liquidar** y el historial de liquidaciones con el detalle para mandar por WhatsApp.
 - **Contactos** (administradores): formularios de la web. Los que quieren ser vendedores se dan de alta con un toque.
-- **Productos:** carga rápida, ofertas, combos y estado **Por encargo** (para publicar lo que todavía no está en el depósito). Muestra vistas y agregados al carrito para medir el interés.
+- **Productos:** SKU o código interno (se ve en la lista, en cada pedido y en el mensaje de WhatsApp, y avisa si está repetido), carga rápida, ofertas, combos y estado **Por encargo** (para publicar lo que todavía no está en el depósito). Muestra vistas y agregados al carrito para medir el interés.
 - **Datos y ajustes** (administradores): datos del negocio, fotos, marcas, **comisiones** (general, por rubro, extra por sumar vendedores, meses) y **envíos** por zona.
 - **Equipo** (administradores).
 
@@ -50,8 +50,29 @@ Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda co
 2. **Asignación del cliente:** el feriante queda a nombre del vendedor si entra por su link, si escribe su código en el carrito o si ya era su cliente (por teléfono). El primero que lo trajo lo conserva mientras compre: vence a los 6 meses sin compras. Desde el pedido podés reasignarlo a mano.
 3. **Comisión:** se calcula al marcar el pedido como Entregado, sobre los productos (el envío no suma), con el % de cada rubro. Si el vendedor fue sumado por otro, el que lo sumó cobra un extra durante los primeros meses. Un solo nivel.
 4. **Liquidación:** en Vendedores, “Liquidar” registra el pago de todo lo pendiente y marca esos pedidos como pagados. Un pedido liquidado ya no se puede cancelar ni reasignar.
-5. **Cartel con QR:** cada vendedor genera su cartel desde su panel (“Cartel con tu QR para la feria”), y vos desde Panel → Vendedores → “Cartel con QR”. Hay dos formatos: A4 para imprimir y vertical para estados. El QR lleva al catálogo con su código, así todo lo que entra por ahí queda a su nombre.
+5. **Promo con productos y cartel con QR:** desde el panel del vendedor, desde Vendedores (“Promo y cartel”) o desde Productos (“Armar promo”, versión general sin vendedor). La promo muestra hasta 6 productos con foto, precio y ganancia, en formato vertical para estados o 4:5 para feed y WhatsApp. El cartel con QR sale en A4 para imprimir.
+   - Antes: **Cartel con QR:** cada vendedor genera su cartel desde su panel (“Cartel con tu QR para la feria”), y vos desde Panel → Vendedores → “Cartel con QR”. Hay dos formatos: A4 para imprimir y vertical para estados. El QR lleva al catálogo con su código, así todo lo que entra por ahí queda a su nombre.
 6. **Transparencia:** las reglas se muestran iguales en la web (Contacto → Quiero ser vendedor) y en el panel de cada vendedor, con sus pedidos, clientes, equipo y liquidaciones.
+
+## Fotos de productos en promos e imágenes para compartir (una sola vez)
+
+Para que las fotos que subís desde el panel aparezcan dentro de las promos y de las imágenes para estados, el depósito de fotos de Firebase tiene que permitir leerlas desde la web:
+
+1. Entrá a [console.cloud.google.com](https://console.cloud.google.com), elegí el proyecto **el-galpon-b3cac** y tocá el ícono **Activar Cloud Shell** (arriba a la derecha, `>_`).
+2. Pegá estas dos líneas y Enter:
+
+```
+echo '[{"origin":["*"],"method":["GET"],"maxAgeSeconds":3600}]' > cors.json
+gsutil cors set cors.json gs://el-galpon-b3cac.firebasestorage.app
+```
+
+Si no lo hacés, las promos igual se arman, pero las fotos subidas salen reemplazadas por la inicial del producto.
+
+## Probar el panel de vendedor
+
+1. Panel → Vendedores → **Nuevo vendedor**, con un mail distinto al tuyo (un Gmail de prueba sirve).
+2. Abrí una **ventana de incógnito**, entrá a `/#admin`, tocá **“Es mi primera vez: crear acceso”** con ese mail y verificalo.
+3. Vas a ver el panel del vendedor: su link, su QR, la promo con productos, sus pedidos y comisiones. Para probar la asignación, abrí su link en otra ventana y hacé un pedido.
 
 ## Equipo y permisos
 

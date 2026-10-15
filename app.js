@@ -73,6 +73,8 @@
       : '<span class="price num">' + money(p.price) + '</span>';
   }
   function imgOf(p) { return p.img || (cfg && cfg.images && cfg.images.depB) || ''; }
+  function cleanSku(v) { return String(v || '').toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9._\-\/]/g, '').slice(0, 30); }
+  function skuTaken(sku, id) { return !!sku && products.some(function (p) { return p.id !== id && cleanSku(p.sku) === sku; }); }
   function prodById(id) { for (var i = 0; i < products.length; i++) if (products[i].id === id) return products[i]; return null; }
   function isStaff() { return role === 'owner' || role === 'admin' || role === 'editor'; }
   function isAdmin() { return role === 'owner' || role === 'admin'; }
@@ -219,9 +221,9 @@
     return '' +
       '<section class="hero"><div class="wrap hero-grid">' +
       '<div class="hero-copy">' +
-      '<span class="pill">' + ic('pin', 16) + 'Depósito en ' + esc(c.zone || 'zona sur/oeste') + ' · Abierto al público</span>' +
+      '<span class="pill">' + ic('pin', 16) + 'Trabajamos con feriantes de todo Buenos Aires</span>' +
       '<h1>Ganá plata extra vendiendo <em>cosas para la casa</em></h1>' +
-      '<p class="lead">Bazar, blanquería, cocina y tecno a precio de depósito para feriantes y revendedores. Elegís del catálogo, ' + (shipOn() ? 'retirás o te lo enviamos' : 'retirás en el depósito') + ' y lo vendés en tu puesto o en tu barrio.</p>' +
+      '<p class="lead">Bazar, blanquería, cocina y tecno a precio de depósito para feriantes y revendedores de todo Buenos Aires. Elegís del catálogo, ' + (shipOn() ? 'retirás o te lo enviamos' : 'retirás en el depósito') + ' y lo vendés en tu puesto o en tu barrio.</p>' +
       '<div class="ctas"><a class="btn btn-main" href="#catalogo" data-go="catalogo">Ver catálogo y precios</a>' +
       '<a class="btn btn-line" href="' + esc(waLink(joinMsg)) + '" target="_blank" rel="noopener">' + ic('wa') + 'Quiero revender</a></div>' +
       '<div class="checks"><span>' + ic('check', 18) + 'Sin cuota ni inscripción</span><span>' + ic('check', 18) + (shipOn() ? 'Retiro o envío a tu zona' : 'Pagás cuando ves la mercadería') + '</span></div>' +
@@ -304,7 +306,7 @@
       '<div class="suppliers">' +
       '<span class="eyebrow">Empresas y proveedores</span>' +
       '<h2 class="h2" style="font-size:clamp(26px,3.2vw,34px)">¿Fabricás o distribuís productos para el hogar?</h2>' +
-      '<p>Llegá a una red de feriantes y revendedores en zona sur y oeste. Compramos bazar, blanquería, cocina, hogar y tecno.</p>' +
+      '<p>Llegá a una red de feriantes y revendedores de todo Buenos Aires. Compramos bazar, blanquería, cocina, hogar y tecno.</p>' +
       '<a class="btn btn-dark" href="#proveedores" data-act="contact-go" data-type="proveedor">' + ic('truck') + 'Ofrecer mis productos</a>' +
       '</div></div></section>' +
 
@@ -438,7 +440,7 @@
         '</form>';
     } else {
       form = '<form id="contact-form" class="panel" novalidate>' +
-        '<div><h2>Trabajemos juntos</h2><p style="color:var(--ink-2);margin-top:6px">Compramos bazar, blanquería, cocina, hogar y tecno para una red de feriantes y revendedores en zona sur y oeste. Contanos qué ofrecés.</p></div>' +
+        '<div><h2>Trabajemos juntos</h2><p style="color:var(--ink-2);margin-top:6px">Compramos bazar, blanquería, cocina, hogar y tecno para una red de feriantes y revendedores de todo Buenos Aires. Contanos qué ofrecés.</p></div>' +
         '<div class="form-grid">' +
         cfield('Empresa', 'company', { req: true, auto: 'organization', max: 80 }) +
         cfield('Tu nombre', 'name', { req: true, auto: 'name', max: 80 }) +
@@ -594,6 +596,7 @@
       '<div class="detail-body">' +
       '<span class="card-cat">' + esc(p.cat) + '</span>' +
       '<h2 style="font-size:28px">' + esc(p.name) + '</h2>' +
+      (p.sku ? '<span class="pcode">Código ' + esc(p.sku) + '</span>' : '') +
       (p.desc ? '<p style="color:var(--ink-2);font-size:17px;white-space:pre-line">' + (p.combo ? '<b>Incluye:</b> ' : '') + esc(p.desc) + '</p>' : '') +
       '<div class="detail-prices">' +
       '<div><span class="price-lbl">Tu precio' + (onOffer(p) ? ' · oferta hasta el ' + ddmm(p.offerUntil) : '') + '</span><span class="price-row">' + priceHtml(p) + '</span></div>' +
@@ -624,7 +627,7 @@
   function orderRef() { return refName ? refCode : cleanCode(buyer.ref); }
   function orderMessage(code) {
     var t = cartTotals(), ship = shippingCost(), envio = effMode() === 'envio';
-    var lines = cartLines().map(function (l) { return '• ' + l.q + ' x ' + l.p.name + ' (' + money(priceOf(l.p)) + ' c/u)' + (l.p.stock === 'order' ? ' · por encargo' : ''); });
+    var lines = cartLines().map(function (l) { return '• ' + l.q + ' x ' + (l.p.sku ? '[' + l.p.sku + '] ' : '') + l.p.name + ' (' + money(priceOf(l.p)) + ' c/u)' + (l.p.stock === 'order' ? ' · por encargo' : ''); });
     var ref = orderRef();
     return 'Hola ' + cfg.brand.name + '! Te mando mi pedido' + (code ? ' #' + code : '') + ':\n\n' + lines.join('\n') +
       '\n\nProductos: ' + money(t.total) +
@@ -887,7 +890,10 @@
       (list.length ? '<div class="orders">' + list.map(function (o) {
         var d = oDate(o);
         var when = d ? fmtDate(d) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
-        var items = (o.items || []).map(function (i) { return i.q + ' x ' + esc(i.name); }).join('<br>');
+        var items = '<table class="oitems"><tbody>' + (o.items || []).map(function (i) {
+          var sku = i.sku || cleanSku((prodById(i.id) || {}).sku);
+          return '<tr><td class="num q">' + i.q + '</td><td class="sku">' + (sku ? esc(sku) : '<span class="muted">sin SKU</span>') + '</td><td>' + esc(i.name) + '</td></tr>';
+        }).join('') + '</tbody></table>';
         var wa = waTo(o.phone, notifyText(o));
         return '<div class="order st-' + esc(o.status) + '">' +
           '<div class="order-top"><b>#' + esc(o.code || o.id.slice(0, 6).toUpperCase()) + '</b><span class="num">' + when + '</span></div>' +
@@ -966,19 +972,20 @@
   var pq = '';
   function productsAdmin() {
     var q = pq.trim().toLowerCase();
-    var list = products.filter(function (p) { return !q || (p.name + ' ' + p.cat).toLowerCase().indexOf(q) !== -1; });
+    var list = products.filter(function (p) { return !q || (p.name + ' ' + p.cat + ' ' + (p.sku || '')).toLowerCase().indexOf(q) !== -1; });
     var nOffer = products.filter(onOffer).length, nOut = products.filter(function (p) { return p.stock === 'out'; }).length;
     return '<div class="panel">' +
       '<div class="sec-row" style="margin:0"><div><h2>Productos</h2><p style="color:var(--ink-3);font-size:14px;margin-top:4px" class="num">' + products.length + ' productos · ' + nOffer + ' en oferta · ' + nOut + ' sin stock</p></div>' +
-      '<button class="btn btn-main btn-sm" type="button" data-act="new-prod">' + ic('camera', 18) + 'Cargar producto</button></div>' +
-      '<label class="search" style="flex:none">' + ic('search', 20) + '<input id="pq" type="search" placeholder="Buscar en mis productos" value="' + esc(pq) + '" aria-label="Buscar en mis productos"></label>' +
+      '<div class="sactions"><button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="promo">' + ic('share', 18) + 'Armar promo</button>' +
+      '<button class="btn btn-main btn-sm" type="button" data-act="new-prod">' + ic('camera', 18) + 'Cargar producto</button></div></div>' +
+      '<label class="search" style="flex:none">' + ic('search', 20) + '<input id="pq" type="search" placeholder="Buscar por nombre, rubro o SKU" value="' + esc(pq) + '" aria-label="Buscar en mis productos"></label>' +
       '<p class="hint">Cambiá precio y stock directo en la lista: se guarda solo. Tocá la foto o el nombre para editar todo. “Por encargo” sirve para publicar productos que todavía no tenés y medir el interés con las vistas y los agregados al carrito.</p>' +
       '<div class="plist">' + (list.length ? list.map(function (p) {
         var pid = esc(p.id);
         return '<div class="prow' + (p.stock === 'out' ? ' is-out' : '') + '">' +
           '<button type="button" class="prow-main" data-act="edit-prod" data-id="' + pid + '">' +
           '<img src="' + esc(imgOf(p)) + '" alt="">' +
-          '<span class="prow-info"><b>' + esc(p.name) + '</b><span>' + esc(p.cat) + (p.combo ? ' · Combo' : '') + (onOffer(p) ? ' · Oferta ' + money(p.offer) + ' hasta el ' + ddmm(p.offerUntil) : '') + '</span>' +
+          '<span class="prow-info"><b>' + esc(p.name) + '</b><span>' + (p.sku ? '<span class="sku-chip">' + esc(p.sku) + '</span> ' : '<span class="sku-chip none">Sin SKU</span> ') + esc(p.cat) + (p.combo ? ' · Combo' : '') + (onOffer(p) ? ' · Oferta ' + money(p.offer) + ' hasta el ' + ddmm(p.offerUntil) : '') + '</span>' +
           (statsMap ? '<span class="pstat num">' + ((statsMap[p.id] || {}).views || 0) + ' vistas · ' + ((statsMap[p.id] || {}).adds || 0) + ' al carrito</span>' : '') + '</span>' +
           ic('edit', 18) + '</button>' +
           '<div class="prow-quick">' +
@@ -1007,7 +1014,8 @@
       '<label class="upload">Elegir de la galería<input type="file" accept="image/*" data-edit-img="1"></label>' +
       '</div></div>' +
       '<div class="form-grid">' +
-      '<div class="fld wide"><label for="e-name">Nombre</label><input id="e-name" data-e="name" value="' + esc(p.name) + '" placeholder="Ej: Juego de sábanas 2 plazas"></div>' +
+      '<div class="fld"><label for="e-sku">SKU / código interno</label><input id="e-sku" data-e="sku" value="' + esc(p.sku || '') + '" maxlength="30" autocapitalize="characters" placeholder="Ej: BLA-SAB-2P"><small class="hint" id="e-sku-hint">' + (skuTaken(cleanSku(p.sku), p.id) ? 'Ese SKU ya lo tiene otro producto.' : 'El que usás en el depósito. Aparece en cada pedido.') + '</small></div>' +
+      '<div class="fld"><label for="e-name">Nombre</label><input id="e-name" data-e="name" value="' + esc(p.name) + '" placeholder="Ej: Juego de sábanas 2 plazas"></div>' +
       '<div class="fld"><label for="e-price">Precio revendedor ($)</label><input id="e-price" type="number" inputmode="numeric" min="0" data-e="price" value="' + esc(p.price || '') + '"></div>' +
       '<div class="fld"><label for="e-sug">Precio sugerido ($)</label><input id="e-sug" type="number" inputmode="numeric" min="0" data-e="sug" value="' + esc(p.sug || '') + '"></div>' +
       '<div class="wide pe-gain num" id="e-gain">Ganancia del revendedor: ' + money(gain(p)) + '</div>' +
@@ -1068,7 +1076,6 @@
       f('WhatsApp como se muestra', 'contact.whatsappDisplay', { ph: '11 2345-6789' }) +
       f('Instagram', 'contact.instagram', { ph: 'elgalpon.ok' }) +
       f('Mail de contacto (opcional)', 'contact.email', { ph: 'hola@elgalpon.com.ar' }) +
-      f('Zona', 'contact.zone', { ph: 'zona sur/oeste' }) +
       f('Dirección del depósito', 'contact.address', { ph: 'Av. Ejemplo 1234' }) +
       f('Barrio / localidad', 'contact.area', { ph: 'Barrio, Partido' }) +
       f('Horario de retiro', 'contact.hours', { ph: 'Lunes a viernes de 9 a 17' }) +
@@ -1289,7 +1296,7 @@
           '<div class="sactions">' +
           (st.pending > 0 ? '<button class="btn btn-main btn-sm" type="button" data-act="payout" data-code="' + esc(code) + '">Liquidar ' + money(st.pending) + ' (' + st.pendingN + ')</button>' : '') +
           (wa ? '<a class="btn btn-line btn-sm" href="' + esc(wa) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Mandarle su link</a>' : '') +
-          '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-code="' + esc(code) + '">Cartel con QR</button>' +
+          '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="promo" data-code="' + esc(code) + '">Promo y cartel</button>' +
           '<button class="linkbtn" type="button" data-act="seller-toggle" data-code="' + esc(code) + '">' + (off ? 'Reactivar' : 'Pausar') + '</button>' +
           '</div>' +
           (s.email ? '<p class="hint">Entra a su panel con ' + esc(s.email) + '</p>'
@@ -1456,7 +1463,8 @@
       '<div style="display:flex;flex-direction:column;gap:10px;min-width:0">' +
       '<div class="linkrow"><input readonly value="' + esc(link) + '" aria-label="Tu link"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(link) + '">Copiar</button></div>' +
       '<a class="btn btn-main btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareFeriante) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Mandar el catálogo a un feriante</a>' +
-      '<button class="btn btn-dark btn-sm" type="button" data-act="poster" data-code="' + esc(sellerCode) + '">' + ic('camera', 18) + 'Cartel con tu QR para la feria</button>' +
+      '<button class="btn btn-dark btn-sm" type="button" data-act="poster" data-type="promo" data-code="' + esc(sellerCode) + '">' + ic('share', 18) + 'Promo con productos para mandar</button>' +
+      '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="qr" data-code="' + esc(sellerCode) + '">' + ic('camera', 18) + 'Cartel con tu QR para el puesto</button>' +
       (Number(comm().override) > 0 ? '<a class="btn btn-line btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareVend) + '" target="_blank" rel="noopener">' + ic('users', 18) + 'Invitar a otro vendedor</a>' : '') +
       '</div></div></div>' +
       '<div class="panel"><h2>Pedidos de tus clientes</h2>' +
@@ -1656,43 +1664,244 @@
       }
     });
   }
-  function openPoster(code) {
-    var info = null;
-    if (isSeller() && sellerData && sellerData.me) info = { name: sellerData.me.name, phone: sellerData.me.phone };
-    else if (sellersMap[code]) info = { name: sellersMap[code].name, phone: sellersMap[code].phone };
-    if (!info) return;
-    poster = { code: code, name: info.name, phone: info.phone, kind: 'a4', showPhone: true, url: null };
+  /* ================= promo con productos ================= */
+  function loadImgSafe(src) {
+    return new Promise(function (res) {
+      if (!src) { res(null); return; }
+      var im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = function () { res(im); }; im.onerror = function () { res(null); };
+      im.src = src;
+    });
+  }
+  function promoPool(source) {
+    var avail = products.filter(function (p) { return p.stock !== 'out'; });
+    if (source === 'ofertas') return avail.filter(onOffer);
+    if (source === 'destacados') return avail.filter(function (p) { return p.featured; });
+    if (source === 'combos') return avail.filter(function (p) { return p.combo; });
+    if (source && source.indexOf('cat:') === 0) { var c = source.slice(4); return avail.filter(function (p) { return p.cat === c; }); }
+    return avail;
+  }
+  function promoDefaults() {
+    var src = products.some(function (p) { return onOffer(p) && p.stock !== 'out'; }) ? 'ofertas' : 'destacados';
+    var sel = promoPool(src).slice(0, 6).map(function (p) { return p.id; });
+    if (sel.length < 4) promoPool('todo').forEach(function (p) { if (sel.length < 6 && sel.indexOf(p.id) === -1) sel.push(p.id); });
+    return { source: src, sel: sel, title: src === 'ofertas' ? '¡Ofertas para tu puesto!' : '¡Precios de depósito!', subtitle: 'Comprá barato, revendé y ganá' };
+  }
+  function seeded(n) { var x = Math.sin(n * 9301 + 49297) * 233280; return x - Math.floor(x); }
+  function burst(g, cx, cy, r1, r2, pts, fill) {
+    g.beginPath();
+    for (var i = 0; i < pts * 2; i++) { var r = i % 2 ? r2 : r1, a = Math.PI * i / pts - Math.PI / 2; g.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a)); }
+    g.closePath(); g.fillStyle = fill; g.fill();
+  }
+  function fitFont(g, text, weight, family, size, maxW, min) {
+    var sz = size;
+    while (sz > min) { g.font = weight + ' ' + Math.round(sz) + 'px ' + family; if (g.measureText(text).width <= maxW) break; sz -= 2; }
+    return sz;
+  }
+  function makePromo(pz) {
+    var story = pz.kind !== 'square';
+    var W = 1080, H = story ? 1920 : 1350;
+    var D = '"Bricolage Grotesque", Figtree, system-ui, sans-serif', B = 'Figtree, system-ui, sans-serif';
+    var NAVY = '#1E2A5A', ORANGE = '#FF6B1A', YELLOW = '#FFD23F', GREEN = '#15803D', CREAM = '#FFF8F0';
+    var items = pz.sel.map(prodById).filter(Boolean).slice(0, 6);
+    var fontsReady = document.fonts ? Promise.all([document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('700 40px Figtree'), document.fonts.load('600 40px Figtree')]).catch(function () {}) : Promise.resolve();
+    return Promise.all([pz.code ? loadQRLib() : Promise.resolve(), fontsReady, Promise.all(items.map(function (p) { return loadImgSafe(p.img); }))]).then(function (r) {
+      var imgs = r[2];
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      var g = cv.getContext('2d');
+      // fondo con rayos y papelitos
+      g.fillStyle = ORANGE; g.fillRect(0, 0, W, H);
+      g.save(); g.translate(W / 2, story ? 330 : 260);
+      for (var k = 0; k < 18; k++) { g.rotate(Math.PI / 9); g.fillStyle = 'rgba(255,255,255,0.07)'; g.beginPath(); g.moveTo(0, 0); g.lineTo(-90, -1600); g.lineTo(90, -1600); g.closePath(); g.fill(); }
+      g.restore();
+      var conf = ['#FFD23F', '#FFFFFF', '#1E2A5A', '#15803D'];
+      for (var c = 0; c < 46; c++) {
+        var cx = seeded(c) * W, cy = seeded(c + 99) * H * (story ? 0.24 : 0.22) + 8, sz = 8 + seeded(c + 7) * 14;
+        g.save(); g.translate(cx, cy); g.rotate(seeded(c + 3) * Math.PI); g.fillStyle = conf[c % 4]; g.globalAlpha = 0.85; g.fillRect(-sz / 2, -sz / 4, sz, sz / 2); g.restore();
+      }
+      // marca
+      var M = 56, ls = 92;
+      g.fillStyle = NAVY; rrect(g, M, 44, ls, ls, 22); g.fill();
+      g.save(); g.translate(M + ls * 0.16, 44 + ls * 0.16); g.scale(ls / 30, ls / 30);
+      g.strokeStyle = ORANGE; g.lineWidth = 2.6; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); g.moveTo(1, 9.5); g.lineTo(10, 3); g.lineTo(19, 9.5); g.moveTo(3, 8.5); g.lineTo(3, 19); g.lineTo(17, 19); g.lineTo(17, 8.5); g.moveTo(7, 19); g.lineTo(7, 13); g.lineTo(13, 13); g.lineTo(13, 19); g.stroke();
+      g.restore();
+      g.fillStyle = '#FFFFFF'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.font = '800 64px ' + D;
+      g.fillText(cfg.brand.name, M + ls + 22, 44 + ls / 2 + 2);
+      // sello
+      var bx = W - 150, by = 112;
+      burst(g, bx, by, 104, 86, 18, YELLOW);
+      g.save(); g.translate(bx, by); g.rotate(-0.12); g.fillStyle = NAVY; g.textAlign = 'center';
+      g.font = '800 30px ' + D; g.fillText('PRECIOS', 0, -18); g.fillText('DE DEPÓSITO', 0, 18); g.restore();
+      // titular en cinta
+      var ty = story ? 300 : 236, tw = W - 2 * M;
+      g.save(); g.translate(W / 2, ty); g.rotate(-0.03);
+      var fs = fitFont(g, pz.title, '800', D, story ? 96 : 84, tw - 70, 44);
+      var th = fs * 1.35;
+      g.fillStyle = 'rgba(30,42,90,0.35)'; rrect(g, -tw / 2 + 8, -th / 2 + 10, tw, th, 22); g.fill();
+      g.fillStyle = '#FFFFFF'; rrect(g, -tw / 2, -th / 2, tw, th, 22); g.fill();
+      g.fillStyle = NAVY; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '800 ' + Math.round(fs) + 'px ' + D;
+      g.fillText(pz.title, 0, 4);
+      g.restore();
+      g.textBaseline = 'alphabetic'; g.textAlign = 'center'; g.fillStyle = '#FFFFFF';
+      var ss = fitFont(g, pz.subtitle, '700', B, story ? 42 : 38, W - 2 * M, 26);
+      g.font = '700 ' + Math.round(ss) + 'px ' + B; g.fillText(pz.subtitle, W / 2, ty + th / 2 + (story ? 76 : 64));
+      // grilla de productos
+      var bottomH = story ? 300 : 230;
+      var gTop = ty + th / 2 + (story ? 120 : 96), gBot = H - bottomH - 36;
+      var n = Math.max(1, items.length);
+      var cols = story ? (n === 1 ? 1 : 2) : (n <= 2 ? n : n <= 4 ? 2 : 3);
+      var rows = Math.ceil(n / cols), gap = 24;
+      var cw = (W - 2 * M - gap * (cols - 1)) / cols, ch = (gBot - gTop - gap * (rows - 1)) / rows;
+      items.forEach(function (p, i) {
+        var col = i % cols, row = Math.floor(i / cols);
+        var lastRow = row === rows - 1, inRow = lastRow ? n - row * cols : cols;
+        var offX = lastRow && inRow < cols ? (cols - inRow) * (cw + gap) / 2 : 0;
+        var x = M + offX + col * (cw + gap), y = gTop + row * (ch + gap);
+        var f = Math.min(cw / 460, ch / 520), pad = 16 * f;
+        g.fillStyle = 'rgba(30,42,90,0.28)'; rrect(g, x + 5, y + 8, cw, ch, 26); g.fill();
+        g.fillStyle = '#FFFFFF'; rrect(g, x, y, cw, ch, 26); g.fill();
+        var infoH = pad + 2 * 34 * f + 8 * f + 60 * f + 10 * f + 46 * f + pad;
+        var ih = Math.max(60, Math.min(cw - 2 * pad, ch - infoH - pad));
+        var iw = cw - 2 * pad, ix = x + pad, iy = y + pad;
+        g.save(); rrect(g, ix, iy, iw, ih, 18); g.clip();
+        var im = imgs[i];
+        if (im) {
+          var sc = Math.max(iw / im.naturalWidth, ih / im.naturalHeight), dw = im.naturalWidth * sc, dh = im.naturalHeight * sc;
+          g.drawImage(im, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
+        } else {
+          g.fillStyle = CREAM; g.fillRect(ix, iy, iw, ih);
+          g.fillStyle = '#E8A57A'; g.textAlign = 'center'; g.font = '800 ' + Math.round(ih * 0.4) + 'px ' + D;
+          g.fillText(String(p.name).charAt(0).toUpperCase(), ix + iw / 2, iy + ih * 0.64);
+        }
+        g.restore();
+        if (onOffer(p)) {
+          g.fillStyle = YELLOW; rrect(g, ix + 12 * f, iy + 12 * f, 150 * f, 46 * f, 23 * f); g.fill();
+          g.fillStyle = NAVY; g.textAlign = 'center'; g.font = '800 ' + Math.round(26 * f) + 'px ' + D; g.fillText('OFERTA', ix + 12 * f + 75 * f, iy + 12 * f + 32 * f);
+        } else if (p.combo) {
+          g.fillStyle = NAVY; rrect(g, ix + 12 * f, iy + 12 * f, 140 * f, 46 * f, 23 * f); g.fill();
+          g.fillStyle = '#FFFFFF'; g.textAlign = 'center'; g.font = '800 ' + Math.round(26 * f) + 'px ' + D; g.fillText('COMBO', ix + 12 * f + 70 * f, iy + 12 * f + 32 * f);
+        }
+        var yy = iy + ih + 12 * f + 30 * f;
+        g.textAlign = 'left'; g.fillStyle = NAVY; g.font = '700 ' + Math.round(29 * f) + 'px ' + B;
+        var nl = wrapText(g, p.name, ix, yy, iw, 34 * f, 2);
+        yy += (nl - 1) * 34 * f + 66 * f;
+        g.font = '800 ' + Math.round(58 * f) + 'px ' + D; g.fillStyle = NAVY;
+        var priceTxt = money(priceOf(p)); g.fillText(priceTxt, ix, yy);
+        if (onOffer(p)) {
+          var pw = g.measureText(priceTxt).width;
+          g.font = '600 ' + Math.round(28 * f) + 'px ' + B; g.fillStyle = '#6B7299';
+          var old = money(p.price), ow = g.measureText(old).width, ox = ix + pw + 14 * f;
+          if (ox + ow <= ix + iw) { g.fillText(old, ox, yy); g.fillRect(ox, yy - 10 * f, ow, 3 * f); }
+        }
+        if (gain(p) > 0) {
+          var gt = 'Ganás ' + money(gain(p));
+          g.font = '800 ' + Math.round(26 * f) + 'px ' + B;
+          var gw = g.measureText(gt).width + 28 * f, gy = yy + 16 * f;
+          g.fillStyle = '#DCFCE7'; rrect(g, ix, gy, gw, 44 * f, 22 * f); g.fill();
+          g.fillStyle = GREEN; g.fillText(gt, ix + 14 * f, gy + 31 * f);
+        }
+      });
+      // franja inferior
+      g.fillStyle = NAVY; g.fillRect(0, H - bottomH, W, bottomH);
+      g.fillStyle = YELLOW; g.fillRect(0, H - bottomH, W, 10);
+      var qs = bottomH - 70, qx = M, qy = H - bottomH + 40;
+      var tx = M;
+      if (pz.code) {
+        g.fillStyle = '#FFFFFF'; rrect(g, qx - 10, qy - 10, qs + 20, qs + 20, 16); g.fill();
+        var qr = qrCanvas(sellerLink(pz.code), 600);
+        g.imageSmoothingEnabled = false; g.drawImage(qr, qx, qy, qs, qs); g.imageSmoothingEnabled = true;
+        tx = qx + qs + 44;
+      }
+      var maxTW = W - tx - M;
+      g.textAlign = pz.code ? 'left' : 'center'; var cxT = pz.code ? tx : W / 2;
+      g.fillStyle = '#FFFFFF';
+      var l1 = pz.code ? 'Escaneá y pedí desde tu celu' : 'Pedí desde tu celu';
+      g.font = '800 ' + Math.round(fitFont(g, l1, '800', D, story ? 50 : 42, maxTW, 26)) + 'px ' + D;
+      g.fillText(l1, cxT, H - bottomH + (story ? 92 : 76));
+      var wa = pz.code ? (pz.showPhone && pz.phone ? 'WhatsApp ' + fmtPhone(pz.phone) : '') : (cfg.contact.whatsappDisplay || cfg.contact.whatsapp ? 'WhatsApp ' + (cfg.contact.whatsappDisplay || fmtPhone(cfg.contact.whatsapp)) : '');
+      var site = location.host.replace(/^www\./, '') + (pz.code ? '/?v=' + pz.code : '');
+      g.fillStyle = '#C9CFE6'; g.font = '600 ' + Math.round(fitFont(g, site, '600', B, story ? 34 : 30, maxTW, 20)) + 'px ' + B;
+      g.fillText(site, cxT, H - bottomH + (story ? 148 : 122));
+      if (wa) { g.fillStyle = '#FFFFFF'; g.font = '700 ' + Math.round(story ? 36 : 30) + 'px ' + B; g.fillText(wa, cxT, H - bottomH + (story ? 200 : 166)); }
+      if (pz.code) {
+        var chip = 'Código ' + pz.code + (pz.name ? ' · ' + String(pz.name).split(' ')[0] : '');
+        g.font = '800 ' + Math.round(story ? 30 : 26) + 'px ' + B;
+        var cwid = g.measureText(chip).width + 40, cyy = H - bottomH + (story ? 226 : 186);
+        if (cyy + 50 < H) { g.fillStyle = ORANGE; rrect(g, tx, cyy, cwid, story ? 52 : 44, 26); g.fill(); g.fillStyle = NAVY; g.fillText(chip, tx + 20, cyy + (story ? 36 : 31)); }
+      }
+      return cv.toDataURL('image/jpeg', 0.9);
+    });
+  }
+
+  function openPoster(code, type) {
+    var info = { name: '', phone: '' };
+    if (code) {
+      if (isSeller() && sellerData && sellerData.me) info = { name: sellerData.me.name, phone: sellerData.me.phone };
+      else if (sellersMap[code]) info = { name: sellersMap[code].name, phone: sellersMap[code].phone };
+      else return;
+    }
+    var d = promoDefaults();
+    poster = { code: code || '', name: info.name, phone: info.phone, type: code ? (type || 'qr') : 'promo', kind: code && type !== 'promo' ? 'a4' : 'story', showPhone: true, url: null,
+      source: d.source, sel: d.sel, title: d.title, subtitle: d.subtitle };
     render(true); buildPoster();
   }
-  function buildPoster() {
+  var posterTimer = null;
+  function buildPoster(delay) {
     if (!poster) return;
-    var pz = poster; pz.url = null; render(true);
-    makePoster(pz).then(function (u) { if (poster === pz) { pz.url = u; render(true); } })
-      .catch(function () { if (poster === pz) { poster = null; setToast('No se pudo armar el cartel. Revisá la conexión y probá de nuevo.'); } });
+    clearTimeout(posterTimer);
+    var pz = poster;
+    var run = function () {
+      if (poster !== pz) return;
+      pz.url = null; render(true);
+      var job = pz.type === 'promo' ? makePromo(pz) : makePoster(pz);
+      job.then(function (u) { if (poster === pz) { pz.url = u; render(true); } })
+        .catch(function () { if (poster === pz) { poster = null; setToast('No se pudo armar la imagen. Revisá la conexión y probá de nuevo.'); } });
+    };
+    if (delay) posterTimer = setTimeout(run, delay); else run();
   }
   function posterModal() {
     if (!poster) return '';
-    var pz = poster, fname = 'cartel-' + pz.code + (pz.kind === 'story' ? '-estados' : '-a4') + '.png';
+    var pz = poster, promo = pz.type === 'promo';
+    var fname = (promo ? 'promo-' : 'cartel-') + (pz.code || 'general') + '-' + pz.kind + (promo ? '.jpg' : '.png');
     var canShare = !!(navigator.canShare && window.File);
-    return '<div class="modal-wrap" data-act="close-poster" style="z-index:60"><div class="modal poster-modal" role="dialog" aria-modal="true" aria-label="Cartel con QR" data-stop="1">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:22px">Cartel de ' + esc(String(pz.name).split(' ')[0]) + '</h2><button class="x" type="button" data-act="close-poster" aria-label="Cerrar">' + ic('x') + '</button></div>' +
-      '<div class="ptabs" role="tablist">' +
-      '<button type="button" role="tab" class="chip' + (pz.kind === 'a4' ? ' on' : '') + '" aria-selected="' + (pz.kind === 'a4') + '" data-act="poster-kind" data-kind="a4">Para imprimir (A4)</button>' +
-      '<button type="button" role="tab" class="chip' + (pz.kind === 'story' ? ' on' : '') + '" aria-selected="' + (pz.kind === 'story') + '" data-act="poster-kind" data-kind="story">Para estados</button>' +
-      '</div>' +
-      (pz.phone ? '<label class="check"><input type="checkbox" id="poster-phone" data-act-check="poster-phone"' + (pz.showPhone ? ' checked' : '') + '>Mostrar el WhatsApp del vendedor</label>' : '') +
-      '<div class="poster-prev' + (pz.kind === 'story' ? ' story' : '') + '">' + (pz.url ? '<img src="' + pz.url + '" alt="Cartel con el QR de ' + esc(pz.name) + '">' : '<div class="empty">Armando el cartel…</div>') + '</div>' +
-      '<p class="hint">' + (pz.kind === 'a4' ? 'Imprimilo en A4, a color, y pegalo en el puesto o en la mesa. El QR lleva al catálogo y todo lo que pidan queda a nombre de ' + esc(String(pz.name).split(' ')[0]) + '.' : 'Subilo a los estados de WhatsApp o a Instagram. El QR también funciona desde otra pantalla.') + '</p>' +
+    var first = String(pz.name || '').split(' ')[0];
+    var kinds = promo ? [['story', 'Estados (vertical)'], ['square', 'Feed y WhatsApp']] : [['a4', 'Para imprimir (A4)'], ['story', 'Para estados']];
+    var sources = [['ofertas', 'Ofertas'], ['destacados', 'Destacados'], ['combos', 'Combos'], ['todo', 'Todos los productos']].concat((cfg.categories || []).map(function (c) { return ['cat:' + c, c]; }));
+    var pool = promo ? promoPool(pz.source) : [];
+    var extra = promo ? pz.sel.map(prodById).filter(function (p) { return p && pool.indexOf(p) === -1; }) : [];
+    return '<div class="modal-wrap" data-act="close-poster" style="z-index:60"><div class="modal poster-modal" role="dialog" aria-modal="true" aria-label="' + (promo ? 'Promo con productos' : 'Cartel con QR') + '" data-stop="1">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:22px">' + (promo ? 'Promo con productos' : 'Cartel de ' + esc(first)) + '</h2><button class="x" type="button" data-act="close-poster" aria-label="Cerrar">' + ic('x') + '</button></div>' +
+      (pz.code ? '<div class="ptype" role="tablist">' +
+        '<button type="button" role="tab" class="ptype-btn' + (promo ? ' on' : '') + '" aria-selected="' + promo + '" data-act="poster-type" data-type="promo"><b>Promo con productos</b><small>Para mandar y publicar</small></button>' +
+        '<button type="button" role="tab" class="ptype-btn' + (!promo ? ' on' : '') + '" aria-selected="' + !promo + '" data-act="poster-type" data-type="qr"><b>Cartel con QR</b><small>Para el puesto</small></button></div>' : '') +
+      '<div class="ptabs">' + kinds.map(function (k) { return '<button type="button" class="chip' + (pz.kind === k[0] ? ' on' : '') + '" data-act="poster-kind" data-kind="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div>' +
+      (promo ? '<div class="form-grid promo-form">' +
+        '<div class="fld wide"><label for="pz-title">Título</label><input id="pz-title" data-pz="title" maxlength="40" value="' + esc(pz.title) + '"></div>' +
+        '<div class="fld wide"><label for="pz-sub">Bajada</label><input id="pz-sub" data-pz="subtitle" maxlength="60" value="' + esc(pz.subtitle) + '"></div>' +
+        '<div class="fld wide"><label for="pz-src">Productos de</label><select id="pz-src" data-pz="source">' + sources.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (pz.source === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></div>' +
+        '</div>' +
+        '<div class="pick"><div class="pick-head"><b>Elegí hasta 6</b><span class="num">' + pz.sel.length + '/6</span></div>' +
+        ((pool.length + extra.length) ? '<div class="pick-list">' + extra.concat(pool).slice(0, 40).map(function (p) {
+          var on = pz.sel.indexOf(p.id) !== -1, dis = !on && pz.sel.length >= 6;
+          return '<label class="pick-item' + (on ? ' on' : '') + (dis ? ' dis' : '') + '"><input type="checkbox" data-pick="' + esc(p.id) + '"' + (on ? ' checked' : '') + (dis ? ' disabled' : '') + '><img src="' + esc(imgOf(p)) + '" alt=""><span><b>' + esc(p.name) + '</b><small class="num">' + money(priceOf(p)) + (onOffer(p) ? ' · oferta' : '') + '</small></span></label>';
+        }).join('') + '</div>' : '<p class="hint">No hay productos con stock en esta selección.</p>') + '</div>' : '') +
+      (pz.code && pz.phone ? '<label class="check"><input type="checkbox" id="poster-phone"' + (pz.showPhone ? ' checked' : '') + '>Mostrar el WhatsApp de ' + esc(first) + '</label>' : '') +
+      '<div class="poster-prev' + (pz.kind === 'story' ? ' story' : '') + '">' + (pz.url ? '<img src="' + pz.url + '" alt="Vista previa">' : '<div class="empty">Armando la imagen…</div>') + '</div>' +
+      '<p class="hint">' + (promo
+        ? 'Mandala por WhatsApp o subila a estados e Instagram. ' + (pz.code ? 'El QR y el código llevan al catálogo y los pedidos quedan a nombre de ' + esc(first) + '.' : 'Es la versión general, sin vendedor.')
+        : (pz.kind === 'a4' ? 'Imprimilo en A4, a color, y pegalo en el puesto. El QR lleva al catálogo y todo lo que pidan queda a nombre de ' + esc(first) + '.' : 'Subilo a los estados de WhatsApp o a Instagram.')) + '</p>' +
       '<div class="ctas">' +
       (pz.url ? '<a class="btn btn-main btn-sm" href="' + pz.url + '" download="' + fname + '">Descargar</a>' : '') +
-      (pz.url && canShare ? '<button class="btn btn-line btn-sm" type="button" data-act="poster-share">' + ic('share', 18) + 'Compartir</button>' : '') +
+      (pz.url && canShare ? '<button class="btn btn-line btn-sm" type="button" data-act="poster-share">' + ic('share', 18) + 'Compartir por WhatsApp</button>' : '') +
       '</div></div></div>';
   }
   function sharePoster() {
     if (!poster || !poster.url) return;
     fetch(poster.url).then(function (r) { return r.blob(); }).then(function (blob) {
-      var file = new File([blob], 'cartel-' + poster.code + '.png', { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file], text: 'Catálogo de ' + cfg.brand.name + ': ' + sellerLink(poster.code) });
+      var isJpg = blob.type === 'image/jpeg';
+      var file = new File([blob], (poster.type === 'promo' ? 'promo-' : 'cartel-') + (poster.code || 'general') + (isJpg ? '.jpg' : '.png'), { type: blob.type || 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file], text: 'Catálogo de ' + cfg.brand.name + ': ' + (poster.code ? sellerLink(poster.code) : location.origin + '/#catalogo') });
       setToast('Tu celular no permite compartir directo. Usá “Descargar”.', true);
     }).catch(function () {});
   }
@@ -1788,7 +1997,7 @@
   /* ================= Firebase: datos ================= */
   function productDoc(p) {
     return {
-      name: String(p.name || '').trim() || 'Producto', desc: String(p.desc || ''), cat: p.cat || (cfg.categories || [''])[0],
+      name: String(p.name || '').trim() || 'Producto', sku: cleanSku(p.sku), desc: String(p.desc || ''), cat: p.cat || (cfg.categories || [''])[0],
       price: Number(p.price) || 0, sug: Number(p.sug) || 0, stock: p.stock || 'ok', featured: !!p.featured,
       img: p.img || '', order: typeof p.order === 'number' ? p.order : 0,
       combo: !!p.combo, offer: Number(p.offer) || 0, offerUntil: p.offer ? String(p.offerUntil || '') : '',
@@ -1805,12 +2014,14 @@
     }).catch(function (e) { busy = false; setToast(e && e.code === 'permission-denied' ? 'Sin permiso: revisá las reglas de Firestore.' : 'No se pudo guardar. Probá de nuevo.'); });
   }
   function blankProduct(catName) {
-    return { id: fb.db.collection('products').doc().id, _new: true, name: '', desc: '', cat: catName || (cfg.categories || [''])[0], price: 0, sug: 0, stock: 'ok', featured: false, combo: false, offer: 0, offerUntil: '', img: '' };
+    return { id: fb.db.collection('products').doc().id, _new: true, sku: '', name: '', desc: '', cat: catName || (cfg.categories || [''])[0], price: 0, sug: 0, stock: 'ok', featured: false, combo: false, offer: 0, offerUntil: '', img: '' };
   }
   function saveProduct(next) {
     var p = editing; if (!p || busy) return;
     if (!p.img) { setToast('Sacale una foto al producto antes de guardar.'); return; }
     if (!String(p.name || '').trim()) { setToast('Poné un nombre al producto.'); return; }
+    p.sku = cleanSku(p.sku);
+    if (skuTaken(p.sku, p.id)) { setToast('El SKU ' + p.sku + ' ya lo tiene otro producto.'); return; }
     if (!(Number(p.price) > 0)) { setToast('Cargá el precio para el revendedor.'); return; }
     if (Number(p.sug) && Number(p.sug) <= Number(p.price)) { setToast('El precio sugerido tiene que ser mayor al precio revendedor.'); return; }
     if (Number(p.offer) > 0 && (!p.offerUntil || Number(p.offer) >= Number(p.price))) { setToast('Revisá la oferta: precio menor al normal y fecha de fin.'); return; }
@@ -1899,7 +2110,7 @@
       name: String(buyer.name || '').slice(0, 80),
       barrio: String(buyer.barrio || '').slice(0, 80),
       phone: digits(buyer.phone).slice(0, 15),
-      items: lines.slice(0, 50).map(function (l) { return { id: l.p.id, name: String(l.p.name).slice(0, 120), q: l.q, price: priceOf(l.p), cat: String(l.p.cat || '').slice(0, 60) }; }),
+      items: lines.slice(0, 50).map(function (l) { return { id: l.p.id, name: String(l.p.name).slice(0, 120), sku: cleanSku(l.p.sku), q: l.q, price: priceOf(l.p), cat: String(l.p.cat || '').slice(0, 60) }; }),
       total: t.total,
       shipping: shippingCost(),
       grand: t.total + shippingCost(),
@@ -1997,7 +2208,8 @@
       case 'seller-toggle': toggleSeller(a.getAttribute('data-code')); break;
       case 'seller-access': giveAccess(a.getAttribute('data-code')); break;
       case 'payout': liquidate(a.getAttribute('data-code'), a); break;
-      case 'poster': openPoster(a.getAttribute('data-code')); break;
+      case 'poster': openPoster(a.getAttribute('data-code') || '', a.getAttribute('data-type') || 'qr'); break;
+      case 'poster-type': if (poster && poster.type !== a.getAttribute('data-type')) { poster.type = a.getAttribute('data-type'); poster.kind = poster.type === 'promo' ? 'story' : 'a4'; buildPoster(); } break;
       case 'close-poster': poster = null; render(true); break;
       case 'poster-kind': if (poster && poster.kind !== a.getAttribute('data-kind')) { poster.kind = a.getAttribute('data-kind'); buildPoster(); } break;
       case 'poster-share': sharePoster(); break;
@@ -2054,6 +2266,7 @@
   document.addEventListener('input', function (e) {
     var t = e.target;
     if (t.id === 'q') { query = t.value; render(true); return; }
+    if ((t.id === 'pz-title' || t.id === 'pz-sub') && poster) { poster[t.id === 'pz-title' ? 'title' : 'subtitle'] = t.value; buildPoster(700); return; }
     if (t.id === 'pq') { pq = t.value; render(true); return; }
     if (t.hasAttribute('data-ct')) { contactForm[contactType + '.' + t.getAttribute('data-ct')] = t.value; return; }
     if (t.hasAttribute('data-brand-name') && cfgDraft) { cfgDraft.brands[Number(t.getAttribute('data-brand-name'))].name = t.value; refreshCfgBar(); return; }
@@ -2092,6 +2305,7 @@
       editing[k] = t.type === 'checkbox' ? t.checked : (t.type === 'number' ? (Number(t.value) || 0) : t.value);
       var g = document.getElementById('e-gain'); if (g) g.textContent = 'Ganancia del revendedor: ' + money(gain(editing));
       var oh = document.getElementById('e-offer-hint'); if (oh) oh.textContent = offerHint(editing);
+      if (k === 'sku') { var sh = document.getElementById('e-sku-hint'); if (sh) { var tk = skuTaken(cleanSku(editing.sku), editing.id); sh.textContent = tk ? 'Ese SKU ya lo tiene otro producto.' : 'El que usás en el depósito. Aparece en cada pedido.'; sh.classList.toggle('warn', tk); } }
       if (k === 'combo' || k === 'stock') render(true);
       return;
     }
@@ -2105,6 +2319,16 @@
     if (t.type === 'checkbox' || t.tagName === 'SELECT') t.dispatchEvent(new Event('input', { bubbles: true }));
     if (t.id === 'rsort') { rSort = t.value; render(true); return; }
     if (t.id === 'poster-phone' && poster) { poster.showPhone = t.checked; buildPoster(); return; }
+    if (t.hasAttribute('data-pick') && poster) {
+      var pid = t.getAttribute('data-pick'), ix = poster.sel.indexOf(pid);
+      if (t.checked && ix === -1 && poster.sel.length < 6) poster.sel.push(pid);
+      if (!t.checked && ix !== -1) poster.sel.splice(ix, 1);
+      buildPoster(150); return;
+    }
+    if (t.id === 'pz-src' && poster) {
+      poster.source = t.value; poster.sel = promoPool(t.value).slice(0, 6).map(function (p) { return p.id; });
+      buildPoster(); return;
+    }
     if (t.hasAttribute('data-rnote') && fb) {
       var rk = t.getAttribute('data-rnote'), nv = t.value.slice(0, 300);
       fb.db.collection('resellers').doc(rk).set({ note: nv, updatedBy: user ? user.email : '', updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).then(function () {
