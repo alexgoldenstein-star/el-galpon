@@ -11,9 +11,10 @@ service firebase.storage {
         'alexgoldenstein@hotmail.com'
       ];
     }
-    // Equipo cargado desde el panel (lee la colección "team" de Firestore).
-    function inTeam() {
-      return firestore.exists(/databases/(default)/documents/team/$(email()));
+    // Equipo con permiso de carga (administrador o carga de productos). Los vendedores no suben fotos.
+    function isStaff() {
+      return firestore.exists(/databases/(default)/documents/team/$(email()))
+        && firestore.get(/databases/(default)/documents/team/$(email())).data.role in ['admin', 'editor'];
     }
 
     // Fotos: cualquiera las ve; dueños y equipo las suben (imágenes de hasta 3 MB).
@@ -21,7 +22,7 @@ service firebase.storage {
       allow read: if true;
       allow write: if request.auth != null
         && request.auth.token.email_verified == true
-        && (isOwner() || inTeam())
+        && (isOwner() || isStaff())
         && request.resource.size < 3 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }

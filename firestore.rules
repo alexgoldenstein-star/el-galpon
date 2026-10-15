@@ -14,17 +14,29 @@ service cloud.firestore {
         'alexgoldenstein@hotmail.com'
       ];
     }
-    function teamRole() {
-      return get(/databases/$(database)/documents/team/$(email())).data.role;
+    function teamPath() {
+      return /databases/$(database)/documents/team/$(email());
     }
     function inTeam() {
-      return signedIn() && exists(/databases/$(database)/documents/team/$(email()));
+      return signedIn() && exists(teamPath());
+    }
+    function teamRole() {
+      return get(teamPath()).data.role;
     }
     function isAdmin() {
       return isOwner() || (inTeam() && teamRole() == 'admin');
     }
     function isStaff() {
       return isAdmin() || (inTeam() && teamRole() == 'editor');
+    }
+    function isSeller() {
+      return inTeam() && teamRole() == 'seller';
+    }
+    function myCode() {
+      return get(teamPath()).data.sellerCode;
+    }
+    function optStr(d, k, max) {
+      return !(k in d) || (d[k] is string && d[k].size() <= max);
     }
 
     // Datos del negocio: todos leen, solo administradores cambian.
@@ -39,33 +51,98 @@ service cloud.firestore {
       allow write: if isStaff();
     }
 
-    // Equipo: cada persona puede leer su propio permiso; administradores gestionan.
+    // Equipo: cada persona lee su propio permiso; administradores gestionan.
     match /team/{memberEmail} {
       allow read: if isAdmin() || (signedIn() && email() == memberEmail);
-      allow write: if isAdmin() && request.resource.data.role in ['admin', 'editor'];
+      allow create, update: if isAdmin()
+        && request.resource.data.role in ['admin', 'editor', 'seller']
+        && (request.resource.data.role != 'seller' || request.resource.data.sellerCode is string);
       allow delete: if isAdmin();
     }
 
-    // Pedidos: cualquiera registra uno nuevo con formato controlado;
-    // el equipo los ve y cambia el estado; solo administradores borran.
-    match /orders/{orderId} {
+    // Códigos de vendedor públicos (solo nombre y si está activo): para saludar "Te atiende ...".
+    match /codes/{code} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Vendedores: el equipo los ve; cada vendedor ve su ficha y la de quienes sumó.
+    match /sellers/{code} {
+      allow read: if isStaff()
+        || (isSeller() && (code == myCode() || resource.data.recruitedBy == myCode()));
+      allow write: if isAdmin();
+    }
+
+    // Asignación cliente → vendedor (por teléfono): solo el equipo.
+    match /clients/{phone} {
+      allow read, write: if isStaff();
+    }
+
+    // Liquidaciones: las registra un administrador; cada vendedor ve las suyas.
+    match /payouts/{id} {
+      allow read: if isAdmin() || (isSeller() && resource.data.code == myCode());
+      allow write: if isAdmin();
+    }
+
+    // Interés por producto (vistas y agregados al carrito): suma de a uno.
+    match /stats/{pid} {
       allow read: if isStaff();
+      allow create: if request.resource.data.keys().hasOnly(['views', 'adds'])
+        && request.resource.data.get('views', 0) <= 1
+        && request.resource.data.get('adds', 0) <= 1;
+      allow update: if request.resource.data.keys().hasOnly(['views', 'adds'])
+        && request.resource.data.get('views', 0) - resource.data.get('views', 0) in [0, 1]
+        && request.resource.data.get('adds', 0) - resource.data.get('adds', 0) in [0, 1];
+    }
+
+    // Pedidos: cualquiera registra uno nuevo con formato controlado.
+    // El equipo los ve, cambia el estado, asigna vendedor y calcula comisión.
+    // Cada vendedor ve los pedidos de sus clientes y los que le dan comisión extra.
+    match /orders/{orderId} {
+      allow read: if isStaff()
+        || (isSeller() && (resource.data.sellerCode == myCode() || resource.data.overrideCode == myCode()));
       allow update: if isStaff()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'sellerCode', 'overrideCode', 'assignVia', 'commission', 'deliveredAt'])
         && request.resource.data.status in ['nuevo', 'confirmado', 'listo', 'entregado', 'cancelado'];
       allow delete: if isAdmin();
-      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'phone', 'items', 'total', 'status', 'createdAt'])
+      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'phone', 'items', 'total', 'shipping', 'grand', 'delivery', 'ref', 'status', 'createdAt'])
         && request.resource.data.status == 'nuevo'
         && request.resource.data.code is string && request.resource.data.code.size() <= 10
         && request.resource.data.name is string && request.resource.data.name.size() <= 80
         && request.resource.data.barrio is string && request.resource.data.barrio.size() <= 80
-        && (!('phone' in request.resource.data) || (request.resource.data.phone is string && request.resource.data.phone.size() <= 15))
+        && optStr(request.resource.data, 'phone', 15)
+        && optStr(request.resource.data, 'ref', 12)
         && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 50
         && request.resource.data.total is number
+        && (!('shipping' in request.resource.data) || (request.resource.data.shipping is number && request.resource.data.shipping >= 0))
+        && (!('grand' in request.resource.data) || request.resource.data.grand is number)
+        && (!('delivery' in request.resource.data) || request.resource.data.delivery is map)
         && request.resource.data.createdAt == request.time;
     }
 
-    // Notas internas sobre revendedores: solo el equipo.
+    // Contactos desde la web (vendedores y proveedores): cualquiera envía, solo administradores leen.
+    match /leads/{leadId} {
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['nuevo', 'contactado', 'acordado', 'descartado'];
+      allow create: if request.resource.data.keys().hasOnly(['type', 'name', 'phone', 'email', 'company', 'zone', 'kind', 'source', 'products', 'message', 'ref', 'status', 'createdAt'])
+        && request.resource.data.type in ['vendedor', 'proveedor']
+        && request.resource.data.status == 'nuevo'
+        && request.resource.data.name is string && request.resource.data.name.size() > 1 && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.size() >= 8 && request.resource.data.phone.size() <= 20
+        && optStr(request.resource.data, 'email', 100)
+        && optStr(request.resource.data, 'company', 100)
+        && optStr(request.resource.data, 'zone', 100)
+        && optStr(request.resource.data, 'kind', 100)
+        && optStr(request.resource.data, 'source', 100)
+        && optStr(request.resource.data, 'products', 200)
+        && optStr(request.resource.data, 'message', 600)
+        && optStr(request.resource.data, 'ref', 12)
+        && request.resource.data.createdAt == request.time;
+    }
+
+    // Notas internas sobre clientes: solo el equipo.
     match /resellers/{key} {
       allow read, write: if isStaff();
     }

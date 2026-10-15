@@ -36,14 +36,25 @@ Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda co
 
 ## Panel: qué hay en cada pestaña
 
-- **Pedidos:** resumen (ventas 7 y 30 días, ticket promedio, revendedores activos, recompra, pendientes, más vendidos) y la lista de pedidos con filtros. Cada pedido tiene un botón para avisarle al revendedor por WhatsApp según su estado (recibido, confirmado, listo, entregado).
-- **Revendedores:** se arma solo con los pedidos. Muestra pedidos, total comprado, ticket promedio, último pedido y estado (activo, hace más de un mes, inactivo). Tiene notas internas y un botón para escribirle con las ofertas de la semana.
-- **Productos:** precio, sugerido y stock se editan directo en la lista y se guardan solos. "Cargar producto" abre la cámara del celular; "Guardar y cargar otro" agiliza la carga. Cada producto puede ser **combo** y tener **oferta** con fecha de fin (se muestra tachado y sale sola cuando vence).
-- **Datos y fotos** y **Equipo:** solo administradores.
+- **Pedidos:** resumen y lista de pedidos. Cada pedido muestra cómo se entrega (retiro o envío a zona), el vendedor asignado y la comisión. Al marcarlo **Entregado** la comisión queda calculada y congelada.
+- **Clientes:** feriantes y revendedores que compraron, con su vendedor asignado.
+- **Vendedores** (administradores): alta de vendedores con su código y link, clientes, ventas, comisión a cobrar y cobrada, botón **Liquidar** y el historial de liquidaciones con el detalle para mandar por WhatsApp.
+- **Contactos** (administradores): formularios de la web. Los que quieren ser vendedores se dan de alta con un toque.
+- **Productos:** carga rápida, ofertas, combos y estado **Por encargo** (para publicar lo que todavía no está en el depósito). Muestra vistas y agregados al carrito para medir el interés.
+- **Datos y ajustes** (administradores): datos del negocio, fotos, marcas, **comisiones** (general, por rubro, extra por sumar vendedores, meses) y **envíos** por zona.
+- **Equipo** (administradores).
+
+## Vendedores y comisiones
+
+1. **Alta:** Panel → Vendedores → Nuevo vendedor (o desde Contactos). Cada uno tiene un **código** (ej. `MARTA`) y su **link**: `https://el-galpon-seven.vercel.app/?v=MARTA`. Si cargás su mail, entra a su propio panel en `/#admin` (la primera vez con “Es mi primera vez: crear acceso”).
+2. **Asignación del cliente:** el feriante queda a nombre del vendedor si entra por su link, si escribe su código en el carrito o si ya era su cliente (por teléfono). El primero que lo trajo lo conserva mientras compre: vence a los 6 meses sin compras. Desde el pedido podés reasignarlo a mano.
+3. **Comisión:** se calcula al marcar el pedido como Entregado, sobre los productos (el envío no suma), con el % de cada rubro. Si el vendedor fue sumado por otro, el que lo sumó cobra un extra durante los primeros meses. Un solo nivel.
+4. **Liquidación:** en Vendedores, “Liquidar” registra el pago de todo lo pendiente y marca esos pedidos como pagados. Un pedido liquidado ya no se puede cancelar ni reasignar.
+5. **Transparencia:** las reglas se muestran iguales en la web (Contacto → Quiero ser vendedor) y en el panel de cada vendedor, con sus pedidos, clientes, equipo y liquidaciones.
 
 ## Equipo y permisos
 
-Desde **Panel → Equipo** sumás personas por su mail, sin tocar código:
+Desde **Panel → Equipo** sumás personas por su mail, sin tocar código (los vendedores se suman desde la pestaña Vendedores):
 - **Carga de productos:** agrega y edita productos, precios, fotos y stock, y ve los pedidos.
 - **Administrador:** además cambia los datos del negocio, las fotos de la página y el equipo.
 

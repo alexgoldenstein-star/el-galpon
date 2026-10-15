@@ -32,9 +32,13 @@
     "depC": "img/deposito-3.jpg"
   },
   "categories": [
+    "Tappers",
+    "Vasos plásticos",
+    "Vasos de vidrio",
+    "Tablas de cortar",
+    "Frascos de vidrio",
     "Blanquería",
-    "Cocina",
-    "Bazar"
+    "Tecno económica"
   ],
   "products": [
     {
@@ -85,7 +89,7 @@
       "id": "p05",
       "name": "Batería de ollas x5",
       "desc": "Acero inoxidable, tapas de vidrio",
-      "cat": "Cocina",
+      "cat": "Tappers",
       "price": 48000,
       "sug": 72000,
       "stock": "ok",
@@ -96,7 +100,7 @@
       "id": "p06",
       "name": "Set de sartenes x3",
       "desc": "Antiadherentes, 20, 24 y 28 cm",
-      "cat": "Cocina",
+      "cat": "Tappers",
       "price": 29000,
       "sug": 44000,
       "stock": "ok",
@@ -107,7 +111,7 @@
       "id": "p07",
       "name": "Frascos herméticos x3",
       "desc": "Vidrio con tapa a rosca, 1 litro",
-      "cat": "Cocina",
+      "cat": "Frascos de vidrio",
       "price": 5400,
       "sug": 8900,
       "stock": "ok",
@@ -118,7 +122,7 @@
       "id": "p08",
       "name": "Juego de platos x12",
       "desc": "Cerámica esmaltada, playos y hondos",
-      "cat": "Bazar",
+      "cat": "Vasos de vidrio",
       "price": 21000,
       "sug": 32000,
       "stock": "ok",
@@ -129,7 +133,7 @@
       "id": "p09",
       "name": "Copas de vidrio x6",
       "desc": "Para agua o vino, aptas lavavajillas",
-      "cat": "Bazar",
+      "cat": "Vasos de vidrio",
       "price": 9800,
       "sug": 15500,
       "stock": "ok",
@@ -140,12 +144,27 @@
       "id": "p10",
       "name": "Juego de cubiertos x24",
       "desc": "Acero inoxidable, 6 personas",
-      "cat": "Bazar",
+      "cat": "Vasos de vidrio",
       "price": 12500,
       "sug": 19500,
       "stock": "out",
       "featured": false,
       "img": "img/cubiertos.jpg"
     }
-  ]
+  ],
+  "commissions": {
+    "base": 10,
+    "byCat": {
+      "Tecno económica": 5
+    },
+    "override": 2,
+    "overrideMonths": 6,
+    "clientMonths": 6,
+    "payEvery": "cada 15 días"
+  },
+  "shipping": {
+    "enabled": false,
+    "zones": [],
+    "note": ""
+  }
 }
