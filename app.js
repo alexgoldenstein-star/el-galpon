@@ -189,7 +189,7 @@
   function qtyControl(p, big) {
     var q = cart[p.id] || 0, out = p.stock === 'out';
     if (q > 0) return '<div class="qty' + (big ? ' big' : '') + '"><button type="button" data-act="dec" data-id="' + esc(p.id) + '" aria-label="Quitar uno">−</button><span class="num">' + q + '</span><button type="button" data-act="inc" data-id="' + esc(p.id) + '" aria-label="Agregar uno">+</button></div>';
-    return '<button class="add' + (big ? ' big' : '') + '" type="button" data-act="inc" data-id="' + esc(p.id) + '"' + (out ? ' disabled' : '') + '>' + (out ? 'Sin stock' : 'Agregar al pedido') + '</button>';
+    return '<button class="add' + (big ? ' big' : '') + '" type="button" data-act="inc" data-id="' + esc(p.id) + '"' + (out ? ' disabled' : '') + '>' + (out ? 'Sin stock' : big ? 'Agregar al pedido' : 'Agregar') + '</button>';
   }
   function card(p) {
     return '<article class="card">' +
@@ -318,26 +318,56 @@
       '</div></div></section>';
   }
 
+  var BLOCK_MAX = 8;
+  function catSlug(c) { return 'cat-' + String(c).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+  function catBlock(title, items, filterKey, note) {
+    var more = items.length > BLOCK_MAX;
+    return '<section class="cat-block" id="' + catSlug(title) + '" aria-labelledby="' + catSlug(title) + '-h">' +
+      '<div class="cat-block-head"><div><h2 id="' + catSlug(title) + '-h">' + esc(title) + '</h2>' +
+      '<span class="cat-count num">' + items.length + ' producto' + (items.length === 1 ? '' : 's') + (note ? ' · ' + esc(note) : '') + '</span></div>' +
+      (more && filterKey ? '<button type="button" class="btn btn-line btn-sm" data-act="cat" data-cat="' + esc(filterKey) + '">Ver los ' + items.length + '</button>' : '') +
+      '</div>' +
+      '<div class="grid">' + items.slice(0, more && filterKey ? BLOCK_MAX : items.length).map(card).join('') + '</div></section>';
+  }
   function catalog() {
-    var hasOffers = products.some(onOffer), hasCombos = products.some(function (p) { return p.combo; });
-    var cats = ['Todo'].concat(hasOffers ? ['Ofertas'] : [], hasCombos ? ['Combos'] : [], cfg.categories || []);
-    if (cats.indexOf(cat) === -1) cat = 'Todo';
+    var catsAll = cfg.categories || [];
+    var inCat = function (c) { return products.filter(function (p) { return p.cat === c; }); };
+    var offers = products.filter(onOffer), combos = products.filter(function (p) { return p.combo; });
+    var others = products.filter(function (p) { return catsAll.indexOf(p.cat) === -1; });
+    var usedCats = catsAll.filter(function (c) { return inCat(c).length; });
+    var chips = ['Todo'].concat(offers.length ? ['Ofertas'] : [], combos.length ? ['Combos'] : [], usedCats, others.length ? ['Otros'] : []);
+    if (chips.indexOf(cat) === -1) cat = 'Todo';
     var q = query.trim().toLowerCase();
-    var list = products.filter(function (p) {
-      var inCat = cat === 'Todo' || (cat === 'Ofertas' ? onOffer(p) : cat === 'Combos' ? !!p.combo : p.cat === cat);
-      return inCat && (!q || (p.name + ' ' + (p.desc || '')).toLowerCase().indexOf(q) !== -1);
-    });
+    var match = function (p) { return !q || (p.name + ' ' + (p.desc || '') + ' ' + (p.cat || '')).toLowerCase().indexOf(q) !== -1; };
+    var body;
+    if (cat === 'Todo' && !q) {
+      body = (offers.length ? catBlock('Ofertas', offers, 'Ofertas', 'por tiempo limitado') : '') +
+        (combos.length ? catBlock('Combos', combos, 'Combos') : '') +
+        usedCats.map(function (c) { return catBlock(c, inCat(c), c); }).join('') +
+        (others.length ? catBlock('Otros', others, 'Otros') : '');
+      if (!products.length) body = '<div class="empty">Todavía no hay productos cargados.</div>';
+    } else {
+      var list = products.filter(function (p) {
+        var ok = cat === 'Todo' || (cat === 'Ofertas' ? onOffer(p) : cat === 'Combos' ? !!p.combo : cat === 'Otros' ? catsAll.indexOf(p.cat) === -1 : p.cat === cat);
+        return ok && match(p);
+      });
+      var title = q ? 'Resultados para “' + query.trim() + '”' + (cat !== 'Todo' ? ' en ' + cat : '') : cat;
+      body = list.length
+        ? '<section class="cat-block"><div class="cat-block-head"><div><h2>' + esc(title) + '</h2><span class="cat-count num">' + list.length + ' producto' + (list.length === 1 ? '' : 's') + '</span></div>' +
+          '<button type="button" class="linkbtn" data-act="cat-all">Ver todo el catálogo</button></div>' +
+          '<div class="grid">' + list.map(card).join('') + '</div></section>'
+        : '<div class="empty">No encontramos productos' + (q ? ' con esa búsqueda' : ' en esta categoría') + '. <button type="button" class="linkbtn" data-act="cat-all">Ver todo el catálogo</button></div>';
+    }
     return '<div class="wrap">' +
       '<div class="cat-head"><span class="eyebrow">Precios para revendedores</span><h1 class="h2" style="margin-top:8px">Catálogo</h1>' +
       '<p class="lead" style="margin-top:10px">Tocá un producto para ver el detalle. El precio sugerido es una referencia: vos decidís a cuánto vender.</p>' +
       (cfg.settings.examplePrices ? '<div class="notice">' + ic('info', 20) + '<span>Precios de ejemplo. Los precios reales se confirman al tomar el pedido.</span></div>' : '') +
       '</div>' +
       '<div class="toolbar"><label class="search">' + ic('search', 20) + '<input id="q" type="search" placeholder="Buscar productos" value="' + esc(query) + '" aria-label="Buscar productos"></label>' +
-      '<div class="chips">' + cats.map(function (c) {
+      '<div class="chips">' + chips.map(function (c) {
         return '<button type="button" class="chip' + (c === cat ? ' on' : '') + '" data-act="cat" data-cat="' + esc(c) + '">' + esc(c) + '</button>';
       }).join('') + '</div></div>' +
-      (list.length ? '<div class="grid" style="padding-bottom:48px">' + list.map(card).join('') + '</div>'
-        : '<div class="empty">No encontramos productos con esa búsqueda.</div>') +
+      '<div class="cat-body">' + body + '</div>' +
       '</div>';
   }
 
@@ -1742,7 +1772,13 @@
       case 'close-cart': cartOpen = false; render(true); break;
       case 'new-order': lastOrder = null; try { sessionStorage.removeItem('galpon-last-order'); } catch (er) {} cartOpen = false; go('catalogo'); break;
       case 'send-order': sendOrder(); break;
-      case 'cat': cat = a.getAttribute('data-cat'); render(true); break;
+      case 'cat': {
+        cat = a.getAttribute('data-cat'); render(true);
+        var tb = document.querySelector('.toolbar');
+        if (tb && !a.classList.contains('chip')) window.scrollTo({ top: tb.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+        break;
+      }
+      case 'cat-all': cat = 'Todo'; query = ''; render(true); break;
       case 'share': {
         var sp = prodById(id);
         share = { id: id, img: '', text: sp.name + (sp.desc ? '\n' + sp.desc : '') + '\nPrecio: ' + money(sp.sug) + '\nPedímelo por acá y te lo consigo.' };

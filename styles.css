@@ -528,3 +528,13 @@ details.rules-box[open] summary{margin-bottom:8px}
 .vst.st-entregado{background:var(--green-bg);color:var(--green)}
 .vst.st-cancelado{color:var(--ink-3)}
 .muted{color:var(--ink-3)}
+
+/* ===== v6: catálogo por bloques ===== */
+.cat-body{display:flex;flex-direction:column;gap:40px;padding-bottom:56px}
+.cat-block{display:flex;flex-direction:column;gap:16px;scroll-margin-top:150px;padding-block:0}
+.cat-body{padding-top:16px}
+.cat-block-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;border-bottom:2px solid var(--line);padding-bottom:10px}
+.cat-block-head h2{font-size:clamp(24px,3vw,32px)}
+.cat-block-head > div{display:flex;flex-direction:column;gap:2px}
+.cat-count{font-size:14px;color:var(--ink-3);font-weight:600}
+.cat-block:first-child .cat-block-head{border-bottom-color:var(--orange)}
