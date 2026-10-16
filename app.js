@@ -1223,10 +1223,11 @@
       '<div class="sec-row" style="margin:0"><div><h2>Productos</h2><p style="color:var(--ink-3);font-size:14px;margin-top:4px" class="num">' + products.length + ' productos · ' + nOffer + ' en oferta · ' + nOut + ' sin stock</p></div>' +
       '<div class="sactions"><label class="btn btn-line btn-sm upload-btn">' + ic('plus', 18) + 'Importar Excel<input type="file" accept=".xlsx,.xls,.csv" data-import="1"></label>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="export-x">Exportar Excel</button>' +
+      '<button class="btn btn-line btn-sm" type="button" data-act="cats">Rubros (' + (cfg.categories || []).length + ')</button>' +
       '<button class="btn btn-main btn-sm" type="button" data-act="new-prod">' + ic('camera', 18) + 'Cargar producto</button></div></div>' +
       '<p class="hint">Para cargar muchos de una vez: <button type="button" class="linkbtn" data-act="template-x">bajá la plantilla de Excel</button>, completala y tocá “Importar Excel”. Si un SKU ya existe, se actualiza.</p>' +
       '<label class="search" style="flex:none">' + ic('search', 20) + '<input id="pq" type="search" placeholder="Buscar por nombre, rubro o SKU" value="' + esc(pq) + '" aria-label="Buscar en mis productos"></label>' +
-      (low.length || nOut ? '<div class="admin-note warn-note">' + ic('info', 20) + '<span><b>' + (low.length + products.filter(function (p) { return p.stock === 'out' && low.indexOf(p) === -1; }).length) + ' productos para reponer</b> (sin stock o por debajo del mínimo). <button type="button" class="linkbtn" data-act="plow">' + (pLow ? 'Ver todos' : 'Ver cuáles') + '</button></span></div>' : '') +
+      (low.length || nOut ? '<div class="admin-note warn-note">' + ic('info', 20) + '<span><b>' + (function (n) { return n + (n === 1 ? ' producto' : ' productos'); })(low.length + products.filter(function (p) { return p.stock === 'out' && low.indexOf(p) === -1; }).length) + ' para reponer</b> (sin stock o por debajo del mínimo). <button type="button" class="linkbtn" data-act="plow">' + (pLow ? 'Ver todos' : 'Ver cuáles') + '</button></span></div>' : '') +
       '<p class="hint">Cambiá precio, unidades y stock directo en la lista: se guarda solo. Tocá la foto o el nombre para editar todo. “Por encargo” sirve para publicar productos que todavía no tenés y medir el interés con las vistas y los agregados al carrito.</p>' +
       '<div class="plist">' + (list.length ? list.map(function (p) {
         var pid = esc(p.id);
@@ -1348,6 +1349,64 @@
     }).catch(function (e) { importer.busy = false; setToast(e && e.code === 'permission-denied' ? 'Sin permiso para guardar productos.' : 'Se cortó la importación. Revisá y probá de nuevo: lo que ya entró no se duplica.'); });
   }
 
+  /* ================= rubros (categorías) ================= */
+  var catMgr = null; // { edit: idx, editVal, newVal, del: idx, moveTo, busy }
+  function catCount(c) { return products.filter(function (p) { return p.cat === c; }).length; }
+  function cleanCatName(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+  function catExists(name, except) { var n = name.toLowerCase(); return (cfg.categories || []).some(function (c, i) { return i !== except && c.toLowerCase() === n; }); }
+  // Guarda la lista de rubros y, si hace falta, cambia el rubro de los productos (renombrar o mover).
+  function saveCats(next, remap, done) {
+    if (!isAdmin()) { setToast('Solo un administrador puede cambiar los rubros.'); return; }
+    remap = remap || {};
+    var byCat = clone((cfg.commissions && cfg.commissions.byCat) || {}), nb = {};
+    // al renombrar, el % del rubro se conserva; al eliminar y mover productos, el destino mantiene su propio %
+    Object.keys(byCat).forEach(function (k) { if (remap[k] === undefined && next.indexOf(k) !== -1) nb[k] = byCat[k]; });
+    Object.keys(remap).forEach(function (k) { var to = remap[k]; if (byCat[k] !== undefined && (cfg.categories || []).indexOf(to) === -1 && next.indexOf(to) !== -1) nb[to] = byCat[k]; });
+    var touched = products.filter(function (p) { return remap[p.cat] !== undefined; });
+    var ops = [function (b) { b.update(fb.db.collection('site').doc('main'), { categories: next, 'commissions.byCat': nb }); }];
+    touched.forEach(function (p) { ops.push(function (b) { b.update(fb.db.collection('products').doc(p.id), { cat: remap[p.cat] }); }); });
+    var chunks = []; for (var i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
+    if (catMgr) catMgr.busy = true; render(true);
+    chunks.reduce(function (pr, ch) { return pr.then(function () { var b = fb.db.batch(); ch.forEach(function (f) { f(b); }); return b.commit(); }); }, Promise.resolve()).then(function () {
+      touched.forEach(function (p) { p.cat = remap[p.cat]; });
+      Object.keys(remap).forEach(function (k) { if (cat === k) cat = remap[k] || 'Todo'; });
+      cfg.categories = next.slice(); cfg.commissions = cfg.commissions || clone(COMM_DEFAULT); cfg.commissions.byCat = nb;
+      if (cfgDraft) { cfgDraft.categories = next.slice(); cfgDraft.commissions = cfgDraft.commissions || {}; cfgDraft.commissions.byCat = clone(nb); }
+      if (catMgr) { catMgr.busy = false; catMgr.edit = -1; catMgr.del = -1; }
+      if (done) done();
+      render(true);
+    }).catch(function (e) { if (catMgr) catMgr.busy = false; setToast(e && e.code === 'permission-denied' ? 'Sin permiso para cambiar los rubros.' : 'No se pudo guardar. Probá de nuevo.'); });
+  }
+  function addCat(name, then) {
+    name = cleanCatName(name);
+    if (name.length < 2) { setToast('Escribí el nombre del rubro.', true); return; }
+    if (catExists(name)) { setToast('Ese rubro ya existe.', true); return; }
+    saveCats((cfg.categories || []).concat([name]), null, function () { showToast('Rubro “' + name + '” creado.'); if (then) then(name); });
+  }
+  function catsModal() {
+    if (!catMgr) return '';
+    var cats = cfg.categories || [], m = catMgr, admin = isAdmin();
+    var orphan = products.filter(function (p) { return cats.indexOf(p.cat) === -1; }).length;
+    return '<div class="modal-wrap" data-act="close-cats" style="z-index:60"><div class="modal cats-modal" role="dialog" aria-modal="true" aria-label="Rubros" data-stop="1">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="font-size:22px">Rubros</h2><button class="x" type="button" data-act="close-cats" aria-label="Cerrar">' + ic('x') + '</button></div>' +
+      '<p class="hint">El orden de esta lista es el orden de los bloques del catálogo, de los filtros y del catálogo en PDF. Si renombrás un rubro, sus productos se actualizan solos.</p>' +
+      (admin ? '<form class="cat-add" id="cat-add-form"><input id="cat-new" maxlength="40" placeholder="Nuevo rubro, ej: Termos y mates" value="' + esc(m.newVal || '') + '" aria-label="Nombre del nuevo rubro"><button class="btn btn-main btn-sm" type="submit"' + (m.busy ? ' disabled' : '') + '>' + ic('plus', 18) + 'Agregar</button></form>' : '<p class="hint">Solo un administrador puede cambiar los rubros.</p>') +
+      '<ol class="cat-list">' + cats.map(function (c, i) {
+        var n = catCount(c);
+        if (m.edit === i) return '<li class="editing"><input id="cat-edit" maxlength="40" value="' + esc(m.editVal) + '" aria-label="Nuevo nombre de ' + esc(c) + '"><div class="cat-acts"><button class="btn btn-main btn-sm" type="button" data-act="cat-rename" data-i="' + i + '"' + (m.busy ? ' disabled' : '') + '>Guardar</button><button class="linkbtn" type="button" data-act="cat-cancel">Cancelar</button></div></li>';
+        if (m.del === i) return '<li class="deleting"><div><b>¿Eliminar “' + esc(c) + '”?</b>' + (n ? '<label class="cat-move">Pasar sus ' + n + ' productos a <select id="cat-move">' + cats.filter(function (x) { return x !== c; }).map(function (x) { return '<option' + (x === m.moveTo ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></label>' : '<small>No tiene productos.</small>') + '</div>' +
+          '<div class="cat-acts"><button class="btn btn-sm btn-danger" type="button" data-act="cat-del-ok" data-i="' + i + '"' + (m.busy || (n && cats.length < 2) ? ' disabled' : '') + '>Eliminar</button><button class="linkbtn" type="button" data-act="cat-cancel">Cancelar</button></div></li>';
+        return '<li><span class="cat-name"><b>' + esc(c) + '</b><small class="num">' + n + ' producto' + (n === 1 ? '' : 's') + '</small></span>' +
+          (admin ? '<div class="cat-acts">' +
+            '<button class="icon-btn" type="button" data-act="cat-up" data-i="' + i + '" aria-label="Subir ' + esc(c) + '"' + (i === 0 || m.busy ? ' disabled' : '') + '>↑</button>' +
+            '<button class="icon-btn" type="button" data-act="cat-down" data-i="' + i + '" aria-label="Bajar ' + esc(c) + '"' + (i === cats.length - 1 || m.busy ? ' disabled' : '') + '>↓</button>' +
+            '<button class="icon-btn" type="button" data-act="cat-edit" data-i="' + i + '" aria-label="Renombrar ' + esc(c) + '">' + ic('edit', 16) + '</button>' +
+            '<button class="icon-btn" type="button" data-act="cat-del" data-i="' + i + '" aria-label="Eliminar ' + esc(c) + '">' + ic('x', 16) + '</button></div>' : '') + '</li>';
+      }).join('') + '</ol>' +
+      (orphan ? '<p class="hint warn">' + orphan + ' producto' + (orphan > 1 ? 's tienen' : ' tiene') + ' un rubro que no está en la lista: aparecen en “Otros” del catálogo. Editalos para asignarles uno.</p>' : '') +
+      '</div></div>';
+  }
+
   function productEditor() {
     if (!editing) return '';
     var p = editing;
@@ -1367,7 +1426,8 @@
       '<div class="fld"><label for="e-price">Precio revendedor ($)</label><input id="e-price" type="number" inputmode="numeric" min="0" data-e="price" value="' + esc(p.price || '') + '"></div>' +
       '<div class="fld"><label for="e-sug">Precio sugerido ($)</label><input id="e-sug" type="number" inputmode="numeric" min="0" data-e="sug" value="' + esc(p.sug || '') + '"></div>' +
       '<div class="wide pe-gain num" id="e-gain">Ganancia del revendedor: ' + money(gain(p)) + '</div>' +
-      '<div class="fld"><label for="e-cat">Rubro</label><select id="e-cat" data-e="cat">' + opts + '</select></div>' +
+      '<div class="fld"><label for="e-cat">Rubro</label><select id="e-cat" data-e="cat">' + opts + (isAdmin() ? '<option value="__new">+ Crear rubro nuevo…</option>' : '') + '</select>' +
+        (p._newCat ? '<div class="cat-add"><input id="e-newcat" maxlength="40" placeholder="Nombre del rubro" value="' + esc(p._newCatVal || '') + '" aria-label="Nombre del rubro nuevo"><button class="btn btn-dark btn-sm" type="button" data-act="e-cat-create">Crear</button></div>' : '') + '</div>' +
       '<div class="fld"><label for="e-stock">Stock</label><select id="e-stock" data-e="stock">' +
       '<option value="ok"' + (p.stock === 'ok' ? ' selected' : '') + '>Hay stock</option>' +
       '<option value="low"' + (p.stock === 'low' ? ' selected' : '') + '>Últimas unidades</option>' +
@@ -1415,7 +1475,7 @@
       (key !== 'hero' ? '<div class="fld"><label for="cap-' + key + '">Texto sobre la foto</label><input id="cap-' + key + '" data-c="captions.' + key + '" value="' + esc(cfgDraft.captions[key]) + '"></div>' : '') +
       '</div>';
   }
-  function cfgBase() { var b = clone(cfg); b.categoriesText = (cfg.categories || []).join(', '); return b; }
+  function cfgBase() { return clone(cfg); }
   function businessAdmin() {
     if (!cfgDraft) cfgDraft = cfgBase();
     var changed = JSON.stringify(cfgDraft) !== JSON.stringify(cfgBase());
@@ -1435,7 +1495,7 @@
       f('Formas de pago', 'contact.payments', { wide: true }) +
       f('Plazo para cambios', 'contact.changes', { ph: '7 días' }) +
       f('Pedido mínimo ($)', 'settings.minOrder', { type: 'number' }) +
-      f('Rubros (separados por coma)', 'categoriesText', { wide: true }) +
+      '<div class="fld wide"><label>Rubros</label><div class="cat-summary">' + (cfg.categories || []).map(function (c) { return '<span class="chip">' + esc(c) + '</span>'; }).join('') + '<button class="btn btn-line btn-sm" type="button" data-act="cats">Administrar rubros</button></div></div>' +
       '<label class="check wide"><input type="checkbox" data-c="settings.examplePrices"' + (cfgDraft.settings.examplePrices ? ' checked' : '') + '>Mostrar aviso de “precios de ejemplo” en el catálogo</label>' +
       '</div></div>' +
       '<div class="panel"><h2>Fotos de la página</h2><p>Reemplazá las de muestra por fotos reales del depósito y del equipo.</p><div class="img-slots">' +
@@ -2186,7 +2246,7 @@
   function parseCats(txt) { return String(txt || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean); }
   function commissionsAdmin() {
     var c = cfgDraft.commissions, byCat = c.byCat || {};
-    var cats = parseCats(cfgDraft.categoriesText);
+    var cats = cfg.categories || [];
     return '<div class="panel"><h2>Comisiones de vendedores</h2>' +
       '<p>Se muestran tal cual en la página para vendedores y en el panel de cada uno. Los cambios aplican a los pedidos que se entreguen desde ahora.</p>' +
       '<div class="form-grid">' +
@@ -2808,10 +2868,10 @@
     var main = view === 'canal' ? canalView() : view === 'catalogo' ? catalog() : view === 'admin' ? adminView() : view === 'cuenta' ? accountView() : view === 'contacto' ? contactView() : landing();
     var t = cartTotals();
     document.body.classList.toggle('has-cart', !!t.count && view !== 'admin');
-    document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster || importer || catPdf || drawRes));
+    document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster || importer || catPdf || drawRes || catMgr));
     app.innerHTML = header() + '<main>' + main + '</main>' + (view === 'admin' ? '' : footer()) +
       (view === 'admin' || view === 'canal' ? '' : '<a class="wa-float" href="' + esc(waLink('Hola ' + cfg.brand.name + '!')) + '" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">' + ic('wa', 30) + '</a>') +
-      cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal() + importModal() + catalogModal() + drawModal();
+      cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal() + importModal() + catsModal() + catalogModal() + drawModal();
     if (keepScroll) window.scrollTo(0, y);
     if (view === 'admin' && isSeller()) drawQR();
     if (active) {
@@ -2952,11 +3012,7 @@
   function saveCfg() {
     if (busy) return;
     var d = clone(cfgDraft);
-    if (typeof d.categoriesText === 'string') {
-      d.categories = d.categoriesText.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      if (!d.categories.length) d.categories = cfg.categories;
-    }
-    delete d.categoriesText;
+    d.categories = (cfg.categories || []).slice(); // los rubros se manejan desde "Administrar rubros"
     d.brands = (d.brands || []).filter(function (b) { return b && (String(b.name || '').trim() || b.logo); });
     d.commissions = d.commissions || clone(COMM_DEFAULT);
     ['base', 'override', 'overrideMonths', 'clientMonths'].forEach(function (k) { d.commissions[k] = Math.max(0, Number(d.commissions[k]) || 0); });
@@ -3176,6 +3232,32 @@
       case 'pay-mp': payMP(id, a); break;
       case 'pay-link': { var po = (orders || []).filter(function (o) { return o.id === id; })[0]; if (po) payLink(po, a); break; }
       case 'pay-manual': { var pm = (orders || []).filter(function (o) { return o.id === id; })[0]; if (pm) payManual(pm, a); break; }
+      case 'cats': catMgr = { edit: -1, del: -1, newVal: '' }; render(true); setTimeout(function () { var el = document.getElementById('cat-new'); if (el) el.focus(); }, 0); break;
+      case 'close-cats': if (catMgr && !catMgr.busy) { catMgr = null; render(true); } break;
+      case 'cat-cancel': catMgr.edit = -1; catMgr.del = -1; render(true); break;
+      case 'cat-edit': catMgr.edit = Number(a.getAttribute('data-i')); catMgr.del = -1; catMgr.editVal = cfg.categories[catMgr.edit]; render(true); setTimeout(function () { var el = document.getElementById('cat-edit'); if (el) { el.focus(); el.select(); } }, 0); break;
+      case 'cat-rename': {
+        var ri = Number(a.getAttribute('data-i')), oldN = cfg.categories[ri], newN = cleanCatName(catMgr.editVal);
+        if (newN.length < 2) { showToast('Escribí el nombre del rubro.'); break; }
+        if (newN === oldN) { catMgr.edit = -1; render(true); break; }
+        if (catExists(newN, ri)) { showToast('Ya hay un rubro con ese nombre.'); break; }
+        var nl = cfg.categories.slice(); nl[ri] = newN; var rm = {}; rm[oldN] = newN;
+        saveCats(nl, rm, function () { showToast('Rubro renombrado' + (catCount(newN) ? ': ' + catCount(newN) + ' productos actualizados.' : '.')); });
+        break;
+      }
+      case 'cat-up': case 'cat-down': {
+        var ui = Number(a.getAttribute('data-i')), uj = ui + (act === 'cat-up' ? -1 : 1), ul = cfg.categories.slice();
+        if (uj < 0 || uj >= ul.length) break;
+        var tmp = ul[ui]; ul[ui] = ul[uj]; ul[uj] = tmp; saveCats(ul, null); break;
+      }
+      case 'cat-del': { catMgr.del = Number(a.getAttribute('data-i')); catMgr.edit = -1; var dc = cfg.categories[catMgr.del]; catMgr.moveTo = cfg.categories.filter(function (x) { return x !== dc; })[0] || ''; render(true); break; }
+      case 'cat-del-ok': {
+        var di = Number(a.getAttribute('data-i')), dn = cfg.categories[di], dl = cfg.categories.filter(function (x, k) { return k !== di; }), drm = {};
+        if (catCount(dn)) { var mv = (document.getElementById('cat-move') || {}).value || catMgr.moveTo; if (!mv) break; drm[dn] = mv; }
+        saveCats(dl, drm, function () { showToast('Rubro “' + dn + '” eliminado' + (drm[dn] ? '; sus productos pasaron a ' + drm[dn] + '.' : '.')); });
+        break;
+      }
+      case 'e-cat-create': if (editing) addCat(editing._newCatVal, function (n) { editing.cat = n; editing._newCat = false; editing._newCatVal = ''; }); break;
       case 'plow': pLow = !pLow; render(true); break;
       case 'new-prod': editing = blankProduct(); render(true); break;
       case 'cat-go': e.preventDefault(); cat = a.getAttribute('data-cat'); go('catalogo'); break;
@@ -3237,6 +3319,11 @@
     if (t.id === 'l-email') { loginEmail = t.value; return; }
     if (t.id === 'l-pass') { loginPass = t.value; return; }
     if (t.id === 'l-name') { loginName = t.value; return; }
+    if (t.id === 'cat-new' && catMgr) { catMgr.newVal = t.value; return; }
+    if (t.id === 'cat-edit' && catMgr) { catMgr.editVal = t.value; return; }
+    if (t.id === 'cat-move' && catMgr) { catMgr.moveTo = t.value; return; }
+    if (t.id === 'e-newcat' && editing) { editing._newCatVal = t.value; return; }
+    if (t.id === 'e-cat' && editing && t.value === '__new') { editing._newCat = true; render(true); setTimeout(function () { var el = document.getElementById('e-newcat'); if (el) el.focus(); }, 0); return; }
     if (t.hasAttribute('data-ff')) { freeForm[t.getAttribute('data-ff')] = t.value; return; }
     if (t.hasAttribute('data-rw') && cfgDraft) { var rwi = Number(t.getAttribute('data-rw')), rwf = t.getAttribute('data-rf'); cfgDraft.loyalty.rewards[rwi][rwf] = rwf === 'pts' ? (Number(t.value) || 0) : t.value; refreshCfgBar(); return; }
     if (t.id === 'l-phone') { loginPhone = t.value; return; }
@@ -3345,10 +3432,11 @@
   document.addEventListener('submit', function (e) {
     if (e.target && e.target.id === 'login-form') { e.preventDefault(); emailLogin(); }
     if (e.target && e.target.id === 'contact-form') { e.preventDefault(); submitContact(); }
+    if (e.target && e.target.id === 'cat-add-form') { e.preventDefault(); if (catMgr && !catMgr.busy) addCat(catMgr.newVal, function () { catMgr.newVal = ''; }); }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    if (poster) poster = null; else if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
+    if (catMgr && !catMgr.busy) catMgr = null; else if (poster) poster = null; else if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
     render(true);
   });
   window.addEventListener('hashchange', function () {

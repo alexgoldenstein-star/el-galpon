@@ -85,6 +85,15 @@ Para probar el portal de vendedor: Panel → Vendedores → Nuevo vendedor con u
 - En banners y carteles figura siempre **el WhatsApp del negocio**.
 - **Panel → Promos y QR:** promo general con productos, cartel general, los de cada vendedor y los escaneos de cada QR.
 
+## Rubros
+
+Productos → **Rubros** (o Datos y ajustes → **Administrar rubros**):
+- **Agregar** un rubro nuevo, **renombrarlo** (sus productos se actualizan solos) y **reordenarlos** con las flechas: ese orden es el de los bloques del catálogo, los filtros y el catálogo en PDF.
+- **Eliminar:** si el rubro tiene productos, te pide a qué rubro pasarlos.
+- Desde el editor de un producto también podés elegir **“+ Crear rubro nuevo…”**.
+- La comisión especial de un rubro se conserva al renombrarlo.
+- Solo los administradores cambian rubros; “Carga de productos” los ve y los usa.
+
 ## Stock, Excel, remitos y catálogo PDF
 
 - **Stock con unidades:** en cada producto podés cargar "Unidades en depósito" y "Avisar cuando queden". Al marcar un pedido como **Entregado** se descuentan solas (y vuelven si lo pasás a otro estado). Con 0 pasa a "Sin stock", y por debajo del mínimo a "Últimas unidades". El carrito no deja pedir más de lo que hay. Si dejás las unidades vacías, el stock se maneja a mano como antes.

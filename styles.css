@@ -700,3 +700,28 @@ details.rules-box[open] summary{margin-bottom:8px}
 .points-card details[open]{display:flex;flex-direction:column;gap:10px}
 .redeem{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .draw-modal{text-align:center;gap:10px}
+
+/* v12 · rubros */
+.cats-modal{width:min(620px,100%)}
+.cat-add{display:flex;gap:8px;margin-top:8px}
+.cat-add input{flex:1;min-width:0;height:44px;border:2px solid var(--line);border-radius:12px;background:var(--surface);padding:0 12px;font-size:15px}
+.cat-add input:focus{border-color:var(--ink);outline:none}
+.cat-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;counter-reset:cat}
+.cat-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--line);background:var(--surface);counter-increment:cat}
+.cat-list li:first-child{border-top:0}
+.cat-list li.editing,.cat-list li.deleting{background:var(--surface-2);flex-wrap:wrap}
+.cat-list li.editing input{flex:1;min-width:160px;height:42px;border:2px solid var(--ink);border-radius:10px;background:var(--surface);padding:0 10px;font-size:15px}
+.cat-name{display:flex;flex-direction:column;min-width:0}
+.cat-name::before{content:counter(cat);display:none}
+.cat-name b{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-name small{color:var(--ink-3);font-size:13px}
+.cat-acts{display:flex;gap:6px;align-items:center;flex:none}
+.icon-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:grid;place-items:center;cursor:pointer;font-size:17px;font-weight:800}
+.icon-btn:hover:not(:disabled){border-color:var(--ink)}
+.icon-btn:disabled{opacity:.35;cursor:default}
+.btn-danger{background:var(--danger);color:#fff;border:0}
+.cat-move{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px;margin-top:6px}
+.cat-move select{height:38px;border:2px solid var(--line);border-radius:10px;background:var(--surface);padding:0 8px}
+.cat-summary{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cat-summary .chip{cursor:default}
+.cat-name{flex:1 1 160px}@media (max-width:520px){.cat-list li{flex-wrap:wrap}.cat-acts{margin-left:auto}}
