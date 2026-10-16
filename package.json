@@ -1,0 +1,9 @@
+{
+  "name": "el-galpon",
+  "private": true,
+  "description": "El Galpón: sitio estático + funciones de servidor (WhatsApp y Mercado Pago)",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

@@ -108,7 +108,7 @@ service cloud.firestore {
         || (isSeller() && (resource.data.sellerCode == myCode() || resource.data.overrideCode == myCode()))
         || (authed() && resource.data.uid == request.auth.uid);
       allow update: if isStaff()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'sellerCode', 'overrideCode', 'assignVia', 'commission', 'deliveredAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'sellerCode', 'overrideCode', 'assignVia', 'commission', 'deliveredAt', 'payment', 'stockDone', 'points'])
         && request.resource.data.status in ['nuevo', 'confirmado', 'listo', 'entregado', 'cancelado'];
       allow delete: if isAdmin();
       allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'phone', 'items', 'total', 'shipping', 'grand', 'delivery', 'ref', 'uid', 'status', 'createdAt'])
@@ -150,10 +150,16 @@ service cloud.firestore {
     }
 
     // Cuenta de cliente: cada uno lee y edita su ficha; el equipo las ve.
+    // Los puntos (points, month) solo los escribe el equipo, al entregar pedidos o registrar canjes.
     match /customers/{uid} {
       allow read: if isStaff() || (authed() && request.auth.uid == uid);
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'month']);
+      allow create: if isStaff() && request.resource.data.keys().hasOnly(['points', 'month']);
       allow create, update: if authed() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['name', 'phone', 'barrio', 'address', 'zone', 'email', 'ref', 'createdAt', 'updatedAt'])
+        && (resource == null
+          ? request.resource.data.keys().hasOnly(['name', 'phone', 'barrio', 'address', 'zone', 'email', 'ref', 'createdAt', 'updatedAt'])
+          : request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'barrio', 'address', 'zone', 'email', 'ref', 'createdAt', 'updatedAt']))
         && request.resource.data.name is string && request.resource.data.name.size() <= 80
         && request.resource.data.phone is string && request.resource.data.phone.size() <= 15
         && optStr(request.resource.data, 'barrio', 80)
@@ -162,6 +168,18 @@ service cloud.firestore {
         && optStr(request.resource.data, 'email', 100)
         && optStr(request.resource.data, 'ref', 12);
       allow delete: if isAdmin();
+    }
+
+    // Movimientos de puntos (compras, canjes, sorteos): solo el equipo.
+    match /pointlog/{id} {
+      allow read, create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+
+    // Ganadores de sorteos: públicos (solo nombre, barrio y premio); los registra un administrador.
+    match /draws/{month} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     // Notas internas sobre clientes: solo el equipo.

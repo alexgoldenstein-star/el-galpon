@@ -13,6 +13,8 @@ Landing + catálogo para revendedores, con pedido por WhatsApp. Sitio estático 
 | `firestore.rules` / `storage.rules` | Reglas de seguridad (quién lee y quién escribe) |
 | `data.json` | Datos iniciales. Se usan hasta la primera vez que publicás desde el panel |
 | `img/` | Fotos iniciales (las del depósito son de muestra: reemplazarlas por reales) |
+| `api/` | Funciones de servidor: avisos por WhatsApp y Mercado Pago |
+| `package.json` | Dependencias de las funciones (Vercel las instala solo) |
 
 ## Configurar Firebase (una sola vez)
 
@@ -82,6 +84,57 @@ Para probar el portal de vendedor: Panel → Vendedores → Nuevo vendedor con u
 - Todos los QR (cartel, promo, panel del vendedor) apuntan a `tu-sitio/?v=CODIGO&go=canal`: la web registra al vendedor y salta sola al canal. Si no hay link de canal, abre WhatsApp con el mensaje “Quiero sumarme a la lista de difusión… vengo de parte de X (código X)”. Como el QR apunta a la web, los carteles impresos siguen andando aunque cambies el canal.
 - En banners y carteles figura siempre **el WhatsApp del negocio**.
 - **Panel → Promos y QR:** promo general con productos, cartel general, los de cada vendedor y los escaneos de cada QR.
+
+## Stock, Excel, remitos y catálogo PDF
+
+- **Stock con unidades:** en cada producto podés cargar "Unidades en depósito" y "Avisar cuando queden". Al marcar un pedido como **Entregado** se descuentan solas (y vuelven si lo pasás a otro estado). Con 0 pasa a "Sin stock", y por debajo del mínimo a "Últimas unidades". El carrito no deja pedir más de lo que hay. Si dejás las unidades vacías, el stock se maneja a mano como antes.
+- **Excel:** Productos → "bajá la plantilla", completala y "Importar Excel". Primero muestra una vista previa con nuevos, actualizados (mismo SKU o nombre) y errores. "Exportar Excel" baja todos los productos para editarlos en bloque.
+- **Remito y lista de preparación:** en Pedidos, "Remito" en cada pedido, "Imprimir remitos" para el filtro elegido y "Lista de preparación" (suma por SKU de los pedidos pendientes, con lo que hay en depósito). Se imprimen o se guardan como PDF.
+- **Catálogo en PDF con fotos:** Promos y QR → "Catálogo en PDF con fotos" (general o por vendedor; cada vendedor también lo arma desde su panel). Tapa con QR y WhatsApp del negocio, y productos con foto, SKU, precio, sugerido y ganancia, separados por rubro.
+
+## Puntos y sorteo
+
+Se configura en **Datos y ajustes → Puntos y sorteo**: pesos por punto, premios para canjear y sorteo mensual (una chance cada $X comprados en el mes).
+- Los puntos se suman al marcar el pedido **Entregado** (se descuentan si lo volvés atrás). El cliente los ve en **Mi cuenta**, con su avance y sus chances.
+- **Panel → Puntos y sorteo:** clientes con puntos, **Canjear premio**, **Chance gratis** y **Sortear**. El sorteo es al azar entre todas las chances, queda registrado y el nombre y barrio del ganador se muestran en la web.
+- **Importante:** en Argentina los sorteos promocionales tienen que permitir participar sin comprar. Por eso las bases incluyen la chance gratis por WhatsApp. Antes de lanzarlo, revisalo con tu contador o abogado.
+
+## Servidor: claves en Vercel (una sola vez)
+
+Los avisos automáticos y Mercado Pago corren en funciones de Vercel (carpeta `api/`). Necesitan estas variables en **Vercel → tu proyecto → Settings → Environment Variables** (después de cargarlas, hacé un nuevo deploy: Deployments → ⋯ → Redeploy):
+
+| Variable | Qué es |
+| --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT` | Firebase → ⚙ Configuración del proyecto → Cuentas de servicio → **Generar nueva clave privada**. Pegá el contenido completo del archivo JSON. No lo compartas con nadie. |
+| `SITE_URL` | La dirección del sitio, por ejemplo `https://el-galpon-seven.vercel.app` (o tu dominio). |
+| `MP_ACCESS_TOKEN` | Mercado Pago (ver abajo). |
+| `MP_WEBHOOK_SECRET` | Mercado Pago (ver abajo). |
+| `WA_TOKEN`, `WA_PHONE_ID` | WhatsApp (ver abajo). |
+| `WA_ADMIN_PHONE` | Tu WhatsApp personal, donde te avisa de cada pedido nuevo (ej. `5491150516254`). |
+
+En **Datos y ajustes** cada servicio muestra si quedó "conectado".
+
+### Mercado Pago
+
+1. Entrá a [mercadopago.com.ar/developers/panel/app](https://www.mercadopago.com.ar/developers/panel/app) con la cuenta que cobra y creá una aplicación ("Pagos online" → Checkout Pro).
+2. En **Credenciales de producción** copiá el **Access Token** (empieza con `APP_USR-`) y pegalo en Vercel como `MP_ACCESS_TOKEN`.
+3. En **Webhooks** de esa aplicación, configurá la URL `https://TU-SITIO/api/mp-webhook` con el evento **Pagos**. Copiá la **clave secreta** y pegala como `MP_WEBHOOK_SECRET`.
+4. En **Datos y ajustes → Cobros con Mercado Pago** activalo y elegí total o seña, y si se paga al confirmar el pedido (recomendado) o apenas lo envían.
+
+El cliente ve "Pagar" en Mi cuenta y vos podés mandarle el link desde cada pedido. El pago se marca solo cuando Mercado Pago lo aprueba. Efectivo y transferencia: "Marcar pagado".
+
+### WhatsApp automático (API oficial de Meta)
+
+Necesitás un número **exclusivo** para la API (uno que no esté usando la app de WhatsApp en un celular; puede ser un chip nuevo).
+1. Entrá a [business.facebook.com](https://business.facebook.com), creá (o usá) tu cuenta comercial y, en [developers.facebook.com](https://developers.facebook.com/apps), creá una app de tipo **Empresa** y agregale **WhatsApp**.
+2. En WhatsApp → Configuración de la API, agregá y verificá tu número. Copiá el **Identificador del número de teléfono** → `WA_PHONE_ID`.
+3. Creá un **usuario del sistema** en el Business Manager (Configuración del negocio → Usuarios del sistema), asignale la app con permisos `whatsapp_business_messaging` y generá un **token permanente** → `WA_TOKEN`.
+4. En el Administrador de WhatsApp → **Plantillas de mensajes**, creá estas dos (categoría **Utilidad**, idioma **Español (ARG)**) y esperá la aprobación:
+   - `pedido_estado`: `Hola {{1}}, te escribimos de El Galpón. Tu pedido #{{2}} está {{3}}. {{4}} Si tenés alguna consulta, respondé este mensaje.`
+   - `pedido_nuevo`: `Nuevo pedido #{{1}} de {{2}} ({{3}}) por {{4}}. Revisalo en el panel de El Galpón.`
+5. Cargá una forma de pago en Meta: los mensajes de utilidad tienen un costo bajo por mensaje.
+
+Con eso, cada vez que cambiás el estado de un pedido el cliente recibe el aviso solo (se puede apagar en Datos y ajustes) y a vos te llega cada pedido nuevo. Los botones de WhatsApp manuales siguen estando.
 
 ## Equipo y permisos
 

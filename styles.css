@@ -652,3 +652,51 @@ details.rules-box[open] summary{margin-bottom:8px}
 @media (max-width:560px){.nav a[data-go="contacto"]{display:none}.acct-btn,.cart-btn{width:42px;height:42px}.top-in{gap:8px}}
 @media (max-width:370px){.logo-name{display:none}}
 .canal-save b{white-space:nowrap}
+
+/* v11 · stock, Excel, remitos, catálogo PDF, pagos y puntos */
+.warn-note{background:var(--warn-bg);color:var(--warn)}
+.ok-note{background:var(--green-bg);color:var(--green)}
+.upload-btn{position:relative;overflow:hidden;cursor:pointer}
+.upload-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.import-modal{width:min(860px,100%)}
+.imp-table{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:14px}
+.imp-table table{width:100%;border-collapse:collapse;font-size:14px}
+.imp-table th,.imp-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.imp-table th{position:sticky;top:0;background:var(--surface-2);font-size:12px;text-transform:uppercase;color:var(--ink-3)}
+.imp-table td.num,.imp-table th.num{text-align:right}
+.imp-table tr.err td{background:color-mix(in srgb,var(--danger) 8%,transparent)}
+.imp-table .bad{color:var(--danger)}
+.cat-pick{border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 12px}
+.cat-pick legend{font-size:13px;font-weight:700;color:var(--ink-3);padding:0 4px}
+.pay-line{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:14px}
+.pay-st{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:800;padding:4px 10px;border-radius:999px;background:var(--surface-2);color:var(--ink-2)}
+.pay-st.aprobado{background:var(--green-bg);color:var(--green)}
+.pay-st.rechazado,.pay-st.devuelto{background:var(--warn-bg);color:var(--warn)}
+.pay-btn{align-self:flex-start}
+.conn{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:13px;font-weight:800;padding:5px 12px;border-radius:999px}
+.conn.on{background:var(--green-bg);color:var(--green)}
+.conn.off{background:var(--warn-bg);color:var(--warn)}
+.loyal-band{background:var(--band);color:var(--band-ink);padding-block:56px}
+.loyal-band .eyebrow{color:var(--orange)}
+.loyal-band .lead{color:var(--band-2);margin-top:12px;max-width:52ch}
+.loyal-band .btn-line{color:var(--band-ink);border-color:var(--band-ink);background:transparent}
+.loyal-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:32px;align-items:center}
+.loyal-grid .ctas{margin-top:20px}
+@media (max-width:820px){.loyal-grid{grid-template-columns:1fr}}
+.rewards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.rewards li{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:10px 14px}
+.rewards li b{font-family:var(--f-display);font-size:18px;color:var(--orange-deep)}
+.rewards li em{grid-column:2;font-style:normal;font-size:12px;font-weight:800;color:var(--green)}
+.rewards li.ok{border-color:var(--green)}
+.winner{display:flex;gap:8px;align-items:center;margin-top:12px;background:var(--orange);color:var(--on-orange);border-radius:14px;padding:12px 14px;font-size:15px}
+.points-card{border:2px solid var(--orange)}
+.pts-big{font-family:var(--f-display);font-weight:800;font-size:48px;line-height:1;display:flex;align-items:baseline;gap:8px}
+.pts-big small{font-family:var(--f-body);font-size:15px;font-weight:700;color:var(--ink-3)}
+.pbar{height:10px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.pbar span{display:block;height:100%;background:var(--orange);border-radius:999px}
+.chances{display:flex;flex-direction:column;gap:2px;background:var(--surface-2);border-radius:14px;padding:12px 14px;font-size:14px;color:var(--ink-2)}
+.chances b{font-size:18px;color:var(--ink)}
+.points-card details summary{cursor:pointer;font-weight:700;font-size:14px}
+.points-card details[open]{display:flex;flex-direction:column;gap:10px}
+.redeem{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.draw-modal{text-align:center;gap:10px}
