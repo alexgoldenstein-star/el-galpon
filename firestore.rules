@@ -44,9 +44,10 @@ service cloud.firestore {
     }
 
     // Datos del negocio: todos leen, solo administradores cambian.
+    // (los números públicos de site/counters los actualiza también el equipo)
     match /site/{doc} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (doc == 'counters' && isStaff());
     }
 
     // Productos: todos leen; administradores y "carga de productos" editan.
@@ -150,12 +151,12 @@ service cloud.firestore {
     }
 
     // Cuenta de cliente: cada uno lee y edita su ficha; el equipo las ve.
-    // Los puntos (points, month) solo los escribe el equipo, al entregar pedidos o registrar canjes.
+    // Los puntos (points, month) y el nivel (tier) solo los escribe el equipo, al entregar pedidos o registrar canjes.
     match /customers/{uid} {
       allow read: if isStaff() || (authed() && request.auth.uid == uid);
       allow update: if isStaff()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'month']);
-      allow create: if isStaff() && request.resource.data.keys().hasOnly(['points', 'month']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points', 'month', 'tier']);
+      allow create: if isStaff() && request.resource.data.keys().hasOnly(['points', 'month', 'tier']);
       allow create, update: if authed() && request.auth.uid == uid
         && (resource == null
           ? request.resource.data.keys().hasOnly(['name', 'phone', 'barrio', 'address', 'zone', 'email', 'ref', 'createdAt', 'updatedAt'])

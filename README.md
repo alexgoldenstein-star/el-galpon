@@ -94,6 +94,15 @@ Productos → **Rubros** (o Datos y ajustes → **Administrar rubros**):
 - La comisión especial de un rubro se conserva al renombrarlo.
 - Solo los administradores cambian rubros; “Carga de productos” los ve y los usa.
 
+## Confianza, niveles y etiquetas
+
+- **Números reales en la página:** pedidos entregados, feriantes y barrios. Se calculan solos cada vez que alguien del equipo abre Pedidos y aparecen recién cuando llegan al mínimo que elijas (Datos y ajustes → Confianza). Si tenías ventas reales anteriores a la web, podés sumarlas ahí.
+- **“Más vendidos”:** los destacados de inicio y la etiqueta “Más vendido” salen de los pedidos reales de los últimos 14 días.
+- **Video del depósito:** pegá un link de YouTube (puede ser un Short) y aparece en “Vení a conocernos”.
+- **Garantías:** se editan en Datos y ajustes y se muestran en inicio y en **Cómo trabajamos** (`/#como-trabajamos`). Vienen cargadas: cambios en 7 días, reposición si llega roto o falta algo, precio cerrado, pago seguro y cuidado de datos.
+- **Niveles Bronce / Plata / Oro:** según lo comprado en los últimos 90 días (pedidos entregados). Cada nivel puede tener descuento en el envío (se aplica solo en el carrito cuando el cliente entra con su cuenta), multiplicador de puntos y un beneficio extra. Se actualizan al entregar cada pedido. En Puntos y niveles → **Recalcular niveles** (una vez por semana) bajan los que dejaron de comprar.
+- **Etiquetas de precio:** desde Mi cuenta (clientes), el panel del vendedor o Promos y QR. Hoja A4 con el precio sugerido, chicas (24) o grandes (8).
+
 ## Stock, Excel, remitos y catálogo PDF
 
 - **Stock con unidades:** en cada producto podés cargar "Unidades en depósito" y "Avisar cuando queden". Al marcar un pedido como **Entregado** se descuentan solas (y vuelven si lo pasás a otro estado). Con 0 pasa a "Sin stock", y por debajo del mínimo a "Últimas unidades". El carrito no deja pedir más de lo que hay. Si dejás las unidades vacías, el stock se maneja a mano como antes.

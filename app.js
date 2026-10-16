@@ -52,6 +52,7 @@
     if (h.indexOf('producto-') === 0) { view = 'catalogo'; detailId = h.slice(9); return; }
     if (h === 'catalogo' || h === 'admin' || h === 'inicio' || h === 'contacto' || h === 'cuenta') view = h;
     if (h === 'ingresar' || h === 'mis-pedidos') view = 'cuenta';
+    if (h === 'como-trabajamos' || h === 'garantias') view = 'como';
     if (h === 'proveedores') { view = 'contacto'; contactType = 'proveedor'; }
     if (h === 'vender') { view = 'contacto'; contactType = 'vendedor'; }
   }
@@ -116,7 +117,8 @@
   function shipOn() { return !!(cfg && cfg.shipping && cfg.shipping.enabled && (cfg.shipping.zones || []).length); }
   function effMode() { return shipOn() && buyer.mode === 'envio' ? 'envio' : 'retiro'; }
   function zoneByName(n) { return ((cfg.shipping && cfg.shipping.zones) || []).filter(function (z) { return z.name === n; })[0] || null; }
-  function shippingCost() { if (effMode() !== 'envio') return 0; var z = zoneByName(buyer.zone); return z ? Number(z.cost) || 0 : 0; }
+  function shipBase() { if (effMode() !== 'envio') return 0; var z = zoneByName(buyer.zone); return z ? Number(z.cost) || 0 : 0; }
+  function shippingCost() { var b = shipBase(), off = shipOffPct(); return off ? Math.round(b * (100 - off) / 100) : b; }
   function rulesList() {
     var c = comm();
     var ex = Object.keys(c.byCat || {}).filter(function (k) { return c.byCat[k] !== '' && Number(c.byCat[k]) !== Number(c.base) && (cfg.categories || []).indexOf(k) !== -1; });
@@ -215,6 +217,7 @@
     var b = [];
     if (onOffer(p)) b.push('<span class="badge-offer">Oferta hasta el ' + ddmm(p.offerUntil) + '</span>');
     if (p.combo) b.push('<span class="badge-combo">Combo</span>');
+    else if (isTop(p) && !onOffer(p)) b.push('<span class="badge-top">Más vendido</span>');
     if (p.stock === 'out') b.push('<span class="stock out">Sin stock</span>');
     else if (p.stock === 'order') b.push('<span class="stock order">Por encargo · ' + (Number(p.leadDays) || 7) + ' días</span>');
     else if (p.stock === 'low') b.push('<span class="stock">' + (tracked(p) && Number(p.qty) > 0 ? 'Quedan ' + Number(p.qty) : 'Últimas unidades') + '</span>');
@@ -245,7 +248,8 @@
   function landing() {
     var c = cfg.contact, im = cfg.images;
     var offers = products.filter(function (p) { return onOffer(p) && p.stock !== 'out'; }).slice(0, 4);
-    var feat = products.filter(function (p) { return p.featured && !onOffer(p); }).slice(0, 4);
+    var topP = counters && counters.top ? counters.top.map(prodById).filter(function (p) { return p && p.stock !== 'out' && !onOffer(p); }) : [];
+    var feat = topP.length >= 4 ? topP.slice(0, 4) : products.filter(function (p) { return p.featured && !onOffer(p); }).slice(0, 4);
     if (!feat.length) feat = products.filter(function (p) { return !onOffer(p); }).slice(0, 4);
     var ex = feat[0] || { name: 'Producto', price: 0, sug: 0, img: im.depB };
     var sellMsg = 'Hola ' + cfg.brand.name + '! Quiero ser vendedor en mi zona.';
@@ -261,7 +265,7 @@
       '</div>' +
       '<div class="hero-pic"><img src="' + esc(im.hero) + '" alt="Mercadería en el depósito">' +
       '<div class="hero-tag"><span class="ico">' + ic('cash') + '</span><div><b>Ganás ' + money(gain(ex)) + ' por unidad</b><small>vendiendo ' + esc(String(ex.name).toLowerCase()) + '</small></div></div></div>' +
-      '</div></section>' +
+      '</div></section>' + numbersStrip() +
 
       '<div class="band"><div class="wrap band-grid">' +
       '<div class="band-item">' + ic('shield', 32) + '<div><b>Sumarte es gratis</b><span>Sin inscripción, sin cuota y sin kit obligatorio.</span></div></div>' +
@@ -277,7 +281,7 @@
       '<figure><img src="' + esc(im.depA) + '" alt="" loading="lazy"><figcaption>' + esc(cfg.captions.depA) + '</figcaption></figure>' +
       '<figure><img src="' + esc(im.depB) + '" alt="" loading="lazy"><figcaption>' + esc(cfg.captions.depB) + '</figcaption></figure>' +
       '<figure><img src="' + esc(im.depC) + '" alt="" loading="lazy"><figcaption>' + esc(cfg.captions.depC) + '</figcaption></figure>' +
-      '</div></div></section>' +
+      '</div>' + videoBlock() + '</div></section>' + guaranteesSection() +
 
       brandsSection() + loyaltyLanding() +
       '<section style="padding-top:8px"><div class="wrap">' +
@@ -348,6 +352,7 @@
       '<details><summary>¿Y si un producto viene fallado?</summary><p>Lo cambiamos. Traelo con tu número de pedido dentro de ' + esc(c.changes || '7 días') + '.</p></details>' +
       (shipOn() ? '<details><summary>¿Hacen envíos?</summary><p>Sí. Elegís tu zona en el carrito y el costo se suma al total: ' + cfg.shipping.zones.map(function (z) { return esc(z.name) + ' ' + money(z.cost); }).join(' · ') + '.</p></details>' : '') +
       '<details><summary>¿Cómo funciona para vendedores?</summary><p>' + esc(rulesList().join(' ')) + '</p></details>' +
+      '<details><summary>¿Dónde veo todas las reglas?</summary><p>En <a href="#como-trabajamos" data-go="como">Cómo trabajamos</a> están las condiciones para feriantes, vendedores y proveedores, y nuestras garantías.</p></details>' +
       '</div></div></section>';
   }
 
@@ -601,7 +606,7 @@
     var ig = c.instagram ? '@' + String(c.instagram).replace('@', '') : '';
     return '<footer><div class="wrap foot">' +
       '<div><b>' + esc(cfg.brand.name) + '</b><div>' + esc(cfg.brand.tagline) + '</div></div>' +
-      '<nav class="foot-links" aria-label="Enlaces"><a href="#catalogo" data-go="catalogo">Catálogo</a><a href="#vender" data-act="contact-go" data-type="vendedor">Quiero vender</a><a href="#proveedores" data-act="contact-go" data-type="proveedor">Proveedores</a><a href="#contacto" data-go="contacto">Contacto</a></nav>' +
+      '<nav class="foot-links" aria-label="Enlaces"><a href="#catalogo" data-go="catalogo">Catálogo</a><a href="#vender" data-act="contact-go" data-type="vendedor">Quiero vender</a><a href="#proveedores" data-act="contact-go" data-type="proveedor">Proveedores</a><a href="#como-trabajamos" data-go="como">Cómo trabajamos</a><a href="#contacto" data-go="contacto">Contacto</a></nav>' +
       '<div>' + (c.address ? esc(c.address) + (c.area ? ', ' + esc(c.area) : '') + '<br>' : '') +
       (ourWa() ? 'WhatsApp ' + esc(ourWa()) : '') +
       (ig ? (c.whatsappDisplay || c.whatsapp ? ' · ' : '') + 'Instagram ' + esc(ig) : '') + '</div>' +
@@ -662,7 +667,7 @@
     var ref = orderRef();
     return 'Hola ' + cfg.brand.name + '! Te mando mi pedido' + (code ? ' #' + code : '') + ':\n\n' + lines.join('\n') +
       '\n\nProductos: ' + money(t.total) +
-      (envio ? '\nEnvío a ' + buyer.zone + ': ' + money(ship) : '\nRetiro en el depósito') +
+      (envio ? '\nEnvío a ' + buyer.zone + ': ' + money(ship) + (shipOffPct() && shipBase() ? ' (beneficio nivel ' + myLevel().name + ')' : '') : '\nRetiro en el depósito') +
       '\nTotal: ' + money(t.total + ship) +
       '\n\nNombre: ' + (buyer.name || '') + '\nWhatsApp: ' + (buyer.phone || '') + (buyer.barrio ? '\nBarrio: ' + buyer.barrio : '') +
       (envio ? '\nDirección: ' + (buyer.address || '') : '') +
@@ -720,7 +725,8 @@
         deliveryFields() + refField() +
         '<div class="totals num">' +
         '<div class="tot"><span>Productos</span><span>' + money(t.total) + '</span></div>' +
-        (shipOn() ? '<div class="tot"><span>' + (effMode() === 'envio' ? 'Envío' + (buyer.zone ? ' a ' + esc(buyer.zone) : '') : 'Retiro en el depósito') + '</span><span>' + (effMode() === 'envio' ? (zoneByName(buyer.zone) ? money(shippingCost()) : 'Elegí la zona') : 'Sin costo') + '</span></div>' : '') +
+        (shipOn() ? '<div class="tot"><span>' + (effMode() === 'envio' ? 'Envío' + (buyer.zone ? ' a ' + esc(buyer.zone) : '') : 'Retiro en el depósito') + '</span><span>' + (effMode() === 'envio' ? (zoneByName(buyer.zone) ? (shipOffPct() && shipBase() ? '<s class="muted">' + money(shipBase()) + '</s> ' : '') + (shippingCost() ? money(shippingCost()) : 'Sin cargo') : 'Elegí la zona') : 'Sin costo') + '</span></div>' : '') +
+        (shipOn() && effMode() === 'envio' && shipOffPct() && shipBase() ? '<div class="tot g"><span>Beneficio nivel ' + esc(myLevel().name) + '</span><span>−' + money(shipBase() - shippingCost()) + '</span></div>' : '') +
         '<div class="tot big"><span>Total a pagar</span><b>' + money(t.total + shippingCost()) + '</b></div>' +
         '<div class="tot g"><span>Tu ganancia vendiendo al sugerido</span><span>' + money(t.gain) + '</span></div>' +
         '</div>' +
@@ -874,7 +880,7 @@
       '<div class="corder-top"><div><b>Pedido #' + esc(o.code || o.id.slice(0, 5).toUpperCase()) + '</b><small>' + (dt ? dt.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' }) : 'Recién enviado') + ' · ' + del + '</small></div>' +
       '<span class="vst st-' + esc(o.status) + '">' + esc(cStatusName(o, o.status)) + '</span></div>' +
       (canc ? '<p class="hint">Este pedido se canceló. Si tenés dudas, escribinos.</p>'
-        : '<ol class="steps" aria-label="Estado del pedido">' + CSTEPS.map(function (st, i) { return '<li class="' + (i < idx ? 'done' : i === idx ? 'now' : '') + '"><span class="dot">' + (i <= idx ? ic('check', 14) : '') + '</span><small>' + esc(cStatusName(o, st)) + '</small></li>'; }).join('') + '</ol>') +
+        : '<ol class="osteps" aria-label="Estado del pedido">' + CSTEPS.map(function (st, i) { return '<li class="' + (i < idx ? 'done' : i === idx ? 'now' : '') + '"><span class="dot">' + (i <= idx ? ic('check', 14) : '') + '</span><small>' + esc(cStatusName(o, st)) + '</small></li>'; }).join('') + '</ol>') +
       '<ul class="corder-items">' + shown + '</ul>' +
       (payStatusHtml(o) ? '<div>' + payStatusHtml(o) + '</div>' : '') +
       (payable(o) ? '<button class="btn btn-dark btn-sm pay-btn" type="button" data-act="pay-mp" data-id="' + esc(o.id) + '">Pagar ' + money(payAmount(o)) + (payCfg().mode === 'sena' ? ' de seña' : '') + ' con Mercado Pago</button>' : '') +
@@ -913,7 +919,8 @@
       (user.emailVerified ? '' : verifyBox()) +
       (incomplete ? '<div class="panel panel-hl"><h2>Completá tus datos</h2><p>Así cada pedido sale con tu nombre y WhatsApp, y te avisamos cuando esté listo.</p>' + profileForm() + '</div>' : '') +
       '<div class="acct-grid"><div class="panel"><h2>Mis pedidos' + (open ? ' <span class="count num">' + open + ' en curso</span>' : '') + '</h2>' + ordersHtml + '</div>' +
-      '<aside class="acct-side">' + myPointsPanel() +
+      '<aside class="acct-side">' + myTierPanel() + myPointsPanel() +
+      '<div class="panel"><h2>Para tu puesto</h2><p>Etiquetas con el precio sugerido, listas para imprimir y recortar.</p><button class="btn btn-line btn-sm" type="button" data-act="labels">Imprimir etiquetas de precio</button></div>' +
       (refName ? '<div class="panel"><h2>Te atiende</h2><div class="ref-chip">' + ic('users', 18) + '<span><b>' + esc(refName) + '</b> · código ' + esc(refCode) + '</span></div><p class="hint" style="margin-top:8px">Tus pedidos le quedan asignados.</p></div>' : '') +
       '<div class="panel canal-card"><h2>' + ic('megaphone', 22) + 'Ofertas por WhatsApp</h2><p>Sumate a nuestro canal de difusión y recibí el catálogo y las ofertas de la semana.</p><a class="btn btn-main btn-sm" href="' + esc(canalTarget(refName ? refCode : '', refName)) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Sumarme al canal</a></div>' +
       (!incomplete ? '<div class="panel"><h2>Mis datos</h2>' + profileForm() + '</div>' : '') +
@@ -964,7 +971,7 @@
     if (isAdmin()) {
       var nl = leads ? leads.filter(function (l) { return l.status === 'nuevo'; }).length : 0;
       list.splice(2, 0, ['vendedores', 'Vendedores'], ['contactos', 'Contactos' + (nl ? ' (' + nl + ')' : '')]);
-      list.push(['puntos', 'Puntos y sorteo'], ['negocio', 'Datos y ajustes'], ['equipo', 'Equipo']);
+      list.push(['puntos', 'Puntos y niveles'], ['negocio', 'Datos y ajustes'], ['equipo', 'Equipo']);
     }
     return '<div class="tabs" role="tablist">' + list.map(function (t) {
       return '<button type="button" role="tab" aria-selected="' + (adminTab === t[0]) + '" class="tab' + (adminTab === t[0] ? ' on' : '') + '" data-act="tab" data-tab="' + t[0] + '">' + t[1] + '</button>';
@@ -1500,7 +1507,7 @@
       '</div></div>' +
       '<div class="panel"><h2>Fotos de la página</h2><p>Reemplazá las de muestra por fotos reales del depósito y del equipo.</p><div class="img-slots">' +
       imgSlot('hero', 'Foto principal', false) + imgSlot('depA', 'Depósito 1', true) + imgSlot('depB', 'Depósito 2', true) + imgSlot('depC', 'Depósito 3', true) +
-      '</div></div>' + brandsAdmin() + commissionsAdmin() + shippingAdmin() + paymentsAdmin() + notifyAdmin() + loyaltyAdmin() +
+      '</div></div>' + brandsAdmin() + commissionsAdmin() + shippingAdmin() + trustAdmin() + tiersAdmin() + paymentsAdmin() + notifyAdmin() + loyaltyAdmin() +
       '<div class="savebar"><div class="savebar-in"><div class="savebar-msg">' + (changed ? '<b>Tenés cambios sin publicar.</b>' : 'Todo publicado.') + '</div>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="cfg-discard"' + (changed && !busy ? '' : ' disabled') + '>Descartar</button>' +
       '<button class="btn btn-main btn-sm" type="button" data-act="cfg-save"' + (changed && !busy ? '' : ' disabled') + '>' + (busy ? 'Publicando…' : 'Guardar y publicar') + '</button>' +
@@ -1646,13 +1653,245 @@
       '<label class="check"><input type="checkbox" data-c="notify.auto"' + (N.auto !== false ? ' checked' : '') + '>Avisar al cliente cada vez que cambia el estado de su pedido</label>' +
       '<p class="hint">Confirmado, listo para retirar/enviar, entregado o cancelado. A vos te llega un aviso por cada pedido nuevo.</p></div>';
   }
+  /* ================= confianza: números reales, garantías, niveles, etiquetas ================= */
+  var TRUST_DEFAULT = { showNumbers: true, minShow: 10, baseOrders: 0, baseClients: 0, video: '',
+    guarantees: [
+      { t: 'Cambios dentro de 7 días', d: 'Si algo no te sirve, lo cambiás dentro de los 7 días con la mercadería sin uso y tu número de pedido.' },
+      { t: 'Si llega roto o falta algo, lo reponemos', d: 'Avisanos dentro de las 48 horas con una foto y te lo reponemos en tu próximo pedido o te devolvemos la plata.' },
+      { t: 'Precio cerrado', d: 'El precio que ves al pedir es el que pagás. Sin sorpresas al retirar ni costos escondidos.' },
+      { t: 'Pagás seguro', d: 'Pagás al retirar, por transferencia o con Mercado Pago desde la web. Nunca te pedimos plata por fuera de los canales oficiales.' },
+      { t: 'Tus datos son tuyos', d: 'Usamos tu WhatsApp solo para tus pedidos y ofertas. Si querés dejar de recibirlas, nos avisás y listo.' }
+    ] };
+  var TIERS_DEFAULT = { enabled: false, days: 90, levels: [
+    { name: 'Bronce', min: 0, shipOff: 0, ptsMult: 1, perk: 'Sumás puntos en cada compra' },
+    { name: 'Plata', min: 150000, shipOff: 50, ptsMult: 1.25, perk: 'Te avisamos primero de las ofertas' },
+    { name: 'Oro', min: 400000, shipOff: 100, ptsMult: 1.5, perk: 'Prioridad en el armado y ofertas exclusivas' }] };
+  var counters = null, labels = null;
+  function trust() { return (cfg && cfg.trust) || TRUST_DEFAULT; }
+  function tiers() { return (cfg && cfg.tiers) || TIERS_DEFAULT; }
+  function levelsSorted() { return (tiers().levels || []).slice().sort(function (a, b) { return Number(a.min) - Number(b.min); }); }
+  function tierFor(amount) { var cur = null; levelsSorted().forEach(function (l) { if ((Number(amount) || 0) >= Number(l.min)) cur = l; }); return cur || levelsSorted()[0] || null; }
+  function nextTier(amount) { var L = levelsSorted(); for (var i = 0; i < L.length; i++) if (Number(L[i].min) > (Number(amount) || 0)) return L[i]; return null; }
+  function levelByName(n) { return levelsSorted().filter(function (l) { return l.name === n; })[0] || null; }
+  function tierClass(name) { var i = levelsSorted().map(function (l) { return l.name; }).indexOf(name); return 'tier-' + Math.max(0, i); }
+  // beneficio de envío del cliente con cuenta
+  function myLevel() { if (!tiers().enabled || !isClient() || !customer || !customer.tier) return null; return levelByName(customer.tier.level); }
+  function shipOffPct() { var l = myLevel(); return l ? Math.min(100, Math.max(0, Number(l.shipOff) || 0)) : 0; }
+  function loadCounters() {
+    if (!fb) return;
+    fb.db.collection('site').doc('counters').get().then(function (d) { counters = d.exists ? d.data() : false; render(true); }).catch(function () { counters = false; });
+  }
+  // El equipo recalcula los números públicos cada vez que carga los pedidos.
+  function computeCounters() {
+    if (!orders || !isStaff()) return;
+    var valid = orders.filter(function (o) { return o.status !== 'cancelado'; });
+    var phones = {}, places = {}, since = null, top = {}, cut = Date.now() - 14 * DAY;
+    valid.forEach(function (o) {
+      var ph = digits(o.phone); if (ph) phones[ph] = 1;
+      var b = String(o.barrio || '').trim().toLowerCase(); if (b) places[b] = 1;
+      var d = oDate(o); if (d && (!since || d < since)) since = d;
+      if (d && d.getTime() >= cut) (o.items || []).forEach(function (i) { top[i.id] = (top[i.id] || 0) + (Number(i.q) || 0); });
+    });
+    var next = { delivered: orders.filter(function (o) { return o.status === 'entregado'; }).length, clients: Object.keys(phones).length, places: Object.keys(places).length,
+      since: since ? monthKey(since.getTime()) : '', top: Object.keys(top).filter(prodById).sort(function (a, b) { return top[b] - top[a]; }).slice(0, 8) };
+    var prev = counters || {};
+    if (prev.delivered === next.delivered && prev.clients === next.clients && prev.places === next.places && JSON.stringify(prev.top || []) === JSON.stringify(next.top)) return;
+    next.at = Date.now();
+    fb.db.collection('site').doc('counters').set(next).then(function () { counters = next; }).catch(function () {});
+  }
+  function isTop(p) { return !!(counters && counters.top && counters.top.slice(0, 6).indexOf(p.id) !== -1); }
+  function trustNumbers() {
+    var T = trust(); if (!T.showNumbers || !counters) return null;
+    var del = (counters.delivered || 0) + (Number(T.baseOrders) || 0), cli = (counters.clients || 0) + (Number(T.baseClients) || 0);
+    if (del < (Number(T.minShow) || 0)) return null;
+    return { del: del, cli: cli, places: counters.places || 0, since: counters.since };
+  }
+  function roundNice(n) { return n >= 1000 ? Math.floor(n / 100) * 100 : n >= 100 ? Math.floor(n / 10) * 10 : n; }
+  function numbersStrip() {
+    var n = trustNumbers(); if (!n) return '';
+    var items = [['+' + roundNice(n.del).toLocaleString('es-AR'), 'pedidos entregados'], [roundNice(n.cli).toLocaleString('es-AR'), 'feriantes y revendedores'], [n.places ? n.places.toLocaleString('es-AR') : '', 'barrios y ferias']].filter(function (x) { return x[0]; });
+    return '<div class="nums-strip"><div class="wrap nums-in">' + items.map(function (x) { return '<div><b class="num">' + x[0] + '</b><span>' + x[1] + '</span></div>'; }).join('') +
+      (n.since ? '<small>Números reales de la web, desde ' + esc(monthName(n.since)) + '</small>' : '') + '</div></div>';
+  }
+  function guaranteesHtml() {
+    var G = (trust().guarantees || []).filter(function (g) { return g && g.t; });
+    var icons = ['repeat', 'shield', 'cash', 'check', 'users'];
+    return '<div class="guar-grid">' + G.map(function (g, i) { return '<div class="guar"><span class="guar-ico">' + ic(icons[i % icons.length], 24) + '</span><b>' + esc(g.t) + '</b><p>' + esc(g.d) + '</p></div>'; }).join('') + '</div>';
+  }
+  function guaranteesSection() {
+    if (!(trust().guarantees || []).length) return '';
+    return '<section class="guar-sec"><div class="wrap"><div class="sec-row"><div class="sec-head" style="margin:0"><span class="eyebrow">Compra sin riesgo</span><h2 class="h2">Nuestras garantías</h2></div>' +
+      '<a class="btn btn-line btn-sm" href="#como-trabajamos" data-go="como">Cómo trabajamos</a></div>' + guaranteesHtml() + '</div></section>';
+  }
+  function ytId(u) { var m = String(u || '').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/); return m ? m[1] : ''; }
+  function videoBlock() {
+    var v = trust().video; if (!v) return '';
+    var id = ytId(v);
+    if (id) return '<div class="video-card" data-yt="' + esc(id) + '"><button type="button" class="video-play" data-act="play-yt" aria-label="Ver el video del depósito"><img src="https://i.ytimg.com/vi/' + esc(id) + '/hqdefault.jpg" alt="" loading="lazy"><span class="play">▶</span><span class="video-cap">Mirá cómo armamos tu pedido</span></button></div>';
+    return '<a class="btn btn-line btn-sm" href="' + esc(v) + '" target="_blank" rel="noopener">Ver el video del depósito</a>';
+  }
+  function tiersTable(highlight) {
+    var L = levelsSorted();
+    return '<div class="tiers">' + L.map(function (l) {
+      var perks = [];
+      if (Number(l.shipOff) >= 100) perks.push('Envío sin cargo'); else if (Number(l.shipOff) > 0) perks.push(l.shipOff + '% off en el envío');
+      if (Number(l.ptsMult) > 1 && loyal().enabled) perks.push('Puntos ×' + String(l.ptsMult).replace('.', ','));
+      if (l.perk) perks.push(l.perk);
+      return '<div class="tier ' + tierClass(l.name) + (highlight === l.name ? ' on' : '') + '"><b>' + esc(l.name) + '</b><small class="num">' + (Number(l.min) ? 'Desde ' + money(l.min) : 'Desde tu primera compra') + '</small>' +
+        '<ul>' + perks.map(function (x) { return '<li>' + ic('check', 14) + esc(x) + '</li>'; }).join('') + '</ul>' + (highlight === l.name ? '<em>Tu nivel</em>' : '') + '</div>';
+    }).join('') + '</div><p class="hint">El nivel se calcula con lo que compraste en los últimos ' + (tiers().days || 90) + ' días (pedidos entregados).</p>';
+  }
+  function myTierPanel() {
+    if (!tiers().enabled || !customer || customer.error) return '';
+    var t = customer.tier || { amount: 0, level: (levelsSorted()[0] || {}).name };
+    var nx = nextTier(t.amount);
+    var pct = nx ? Math.min(100, Math.round((Number(t.amount) || 0) / Number(nx.min) * 100)) : 100;
+    return '<div class="panel tier-card ' + tierClass(t.level) + '"><h2>Mi nivel</h2><div class="tier-badge">' + ic('shield', 22) + '<b>' + esc(t.level || '') + '</b></div>' +
+      '<p class="num">Compraste ' + money(t.amount) + ' en los últimos ' + (tiers().days || 90) + ' días.</p>' +
+      (nx ? '<div class="pbar"><span style="width:' + pct + '%"></span></div><p class="hint">Te faltan <b class="num">' + money(Number(nx.min) - (Number(t.amount) || 0)) + '</b> para ser <b>' + esc(nx.name) + '</b>.</p>' : '<p class="hint">Estás en el nivel más alto. ¡Gracias por elegirnos!</p>') +
+      '<details><summary>Ver niveles y beneficios</summary>' + tiersTable(t.level) + '</details></div>';
+  }
+  // ---- niveles: cálculo (equipo)
+  function amountDays(ph) {
+    var cut = Date.now() - (Number(tiers().days) || 90) * DAY, sum = 0;
+    (orders || []).forEach(function (o) { if (o.status === 'entregado' && digits(o.phone) === ph && (Number(o.deliveredAt) || (oDate(o) || { getTime: function () { return 0; } }).getTime()) >= cut) sum += Number(o.total) || 0; });
+    return sum;
+  }
+  function applyTier(ph, uid) {
+    if (!tiers().enabled || !ph) return Promise.resolve(null);
+    var amt = amountDays(ph), lv = tierFor(amt), t = { amount: amt, level: lv ? lv.name : '', at: Date.now() };
+    var cur = (clientsMap || {})[ph] || {};
+    if (cur.tier && cur.tier.level === t.level && cur.tier.amount === t.amount) return Promise.resolve(null);
+    return fb.db.collection('clients').doc(ph).set({ tier: t }, { merge: true }).then(function () {
+      clientsMap = clientsMap || {}; clientsMap[ph] = Object.assign({}, cur, { tier: t });
+      var q = uid ? Promise.resolve([uid]) : fb.db.collection('customers').where('phone', '==', ph).limit(3).get().then(function (s) { return s.docs.map(function (d) { return d.id; }); });
+      return q.then(function (ids) { return Promise.all(ids.map(function (id) { return fb.db.collection('customers').doc(id).set({ tier: t }, { merge: true }); })); });
+    }).then(function () { return cur.tier && cur.tier.level !== t.level ? t.level : null; }).catch(function () { return null; });
+  }
+  function recalcTiers(btn) {
+    if (!orders) return;
+    var phones = {}; orders.forEach(function (o) { var ph = digits(o.phone); if (ph) phones[ph] = o.uid || phones[ph] || ''; });
+    Object.keys(clientsMap || {}).forEach(function (ph) { if (phones[ph] === undefined) phones[ph] = ''; });
+    btn.disabled = true; btn.textContent = 'Recalculando…';
+    var keys = Object.keys(phones), ups = 0;
+    keys.reduce(function (pr, ph) { return pr.then(function () { return applyTier(ph, phones[ph] || null).then(function (ch) { if (ch) ups++; }); }); }, Promise.resolve())
+      .then(function () { render(true); showToast('Niveles recalculados: ' + keys.length + ' clientes' + (ups ? ', ' + ups + ' cambiaron de nivel.' : '.')); });
+  }
+  // ---- etiquetas de precio para el puesto
+  function openLabels() {
+    var mine = [];
+    if (isClient() && Array.isArray(myOrders)) myOrders.forEach(function (o) { (o.items || []).forEach(function (i) { if (prodById(i.id) && mine.indexOf(i.id) === -1) mine.push(i.id); }); });
+    labels = { sel: mine.length ? mine.slice(0, 24) : products.filter(function (p) { return p.featured; }).slice(0, 8).map(function (p) { return p.id; }), q: '', size: 'chica', copies: 1, price: 'sug' };
+    render(true);
+  }
+  function labelsModal() {
+    if (!labels) return '';
+    var L = labels, q = L.q.trim().toLowerCase();
+    var list = products.filter(function (p) { return !q || (p.name + ' ' + p.cat + ' ' + (p.sku || '')).toLowerCase().indexOf(q) !== -1; }).slice(0, 80);
+    return '<div class="modal-wrap" data-act="close-labels" style="z-index:60"><div class="modal" role="dialog" aria-modal="true" aria-label="Etiquetas de precio" data-stop="1" style="width:min(640px,100%)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="font-size:22px">Etiquetas de precio para tu puesto</h2><button class="x" type="button" data-act="close-labels" aria-label="Cerrar">' + ic('x') + '</button></div>' +
+      '<p class="hint">Imprimilas en A4, recortalas y ponelas en cada producto. Llevan el precio de venta sugerido.</p>' +
+      '<div class="ptabs">' + [['chica', 'Chicas (24 por hoja)'], ['grande', 'Grandes (8 por hoja)']].map(function (k) { return '<button type="button" class="chip' + (L.size === k[0] ? ' on' : '') + '" data-act="lab-size" data-size="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="form-grid"><div class="fld"><label for="lab-copies">Copias de cada una</label><input id="lab-copies" type="number" min="1" max="24" inputmode="numeric" value="' + L.copies + '"></div>' +
+      '<label class="search" style="align-self:end">' + ic('search', 20) + '<input id="lab-q" type="search" placeholder="Buscar producto" value="' + esc(L.q) + '"></label></div>' +
+      '<div class="pick"><div class="pick-head"><b>Productos</b><span class="num">' + L.sel.length + ' elegidos</span></div><div class="pick-list">' + list.map(function (p) {
+        var on = L.sel.indexOf(p.id) !== -1;
+        return '<label class="pick-item' + (on ? ' on' : '') + '"><input type="checkbox" data-lab="' + esc(p.id) + '"' + (on ? ' checked' : '') + '><img src="' + esc(imgOf(p)) + '" alt=""><span><b>' + esc(p.name) + '</b><small class="num">Se vende a ' + money(p.sug || priceOf(p)) + '</small></span></label>';
+      }).join('') + '</div></div>' +
+      '<div class="ctas"><button class="btn btn-main btn-sm" type="button" data-act="lab-print"' + (L.sel.length ? '' : ' disabled') + '>Imprimir ' + (L.sel.length * L.copies) + ' etiquetas</button></div></div></div>';
+  }
+  function printLabels() {
+    var L = labels; if (!L || !L.sel.length) return;
+    var big = L.size === 'grande', items = [];
+    L.sel.forEach(function (id) { var p = prodById(id); if (p) for (var i = 0; i < L.copies; i++) items.push(p); });
+    var css = '<style>.sheet{display:grid;grid-template-columns:repeat(' + (big ? 2 : 3) + ',1fr);gap:0}.lab{border:1px dashed #C9CFE6;height:' + (big ? '68mm' : '34mm') + ';padding:' + (big ? '6mm' : '3mm') + ';display:flex;flex-direction:column;justify-content:space-between;break-inside:avoid;overflow:hidden}' +
+      '.lab .n{font-weight:700;font-size:' + (big ? '15pt' : '9pt') + ';line-height:1.15;max-height:2.4em;overflow:hidden}.lab .p{font-weight:800;font-size:' + (big ? '44pt' : '22pt') + ';line-height:1;color:#1E2A5A;letter-spacing:-.02em}' +
+      '.lab .f{display:flex;justify-content:space-between;align-items:center;font-size:' + (big ? '9pt' : '6.5pt') + ';color:#6B7299}.lab .f b{background:#FF6B1A;color:#1E2A5A;border-radius:4px;padding:1px 5px}@page{size:A4;margin:8mm}</style>';
+    var html = css + '<div class="sheet">' + items.map(function (p) {
+      return '<div class="lab"><div class="n">' + esc(p.name) + '</div><div class="p">' + money(p.sug || priceOf(p)) + '</div><div class="f"><span>' + esc(p.sku || p.cat || '') + '</span><b>' + esc(cfg.brand.name) + '</b></div></div>';
+    }).join('') + '</div>';
+    printDoc('Etiquetas de precio', html);
+  }
+  // ---- página "Cómo trabajamos"
+  function comoView() {
+    var c = cfg.contact, P = payCfg(), Lo = loyal(), T = tiers();
+    var block = function (eyebrow, title, inner, id) { return '<section class="como-sec"' + (id ? ' id="' + id + '"' : '') + '><div class="wrap"><div class="sec-head"><span class="eyebrow">' + eyebrow + '</span><h2 class="h2">' + title + '</h2></div>' + inner + '</div></section>'; };
+    var li = function (arr) { return '<ul class="rules">' + arr.filter(Boolean).map(function (x) { return '<li>' + ic('check', 18) + '<span>' + x + '</span></li>'; }).join('') + '</ul>'; };
+    var n = trustNumbers();
+    return '<section class="como-hero"><div class="wrap"><span class="eyebrow">Reglas claras</span><h1>Cómo trabajamos</h1>' +
+      '<p class="lead">Somos un depósito de bazar, blanquería y hogar que trabaja con feriantes y revendedores de todo Buenos Aires. Funciona si ganamos todos: el feriante compra barato y vende con margen, el vendedor cobra por cada cliente que suma, y nosotros crecemos con ustedes.</p>' +
+      (n ? '<p class="num como-n">+' + roundNice(n.del) + ' pedidos entregados · ' + roundNice(n.cli) + ' feriantes y revendedores</p>' : '') + '</div></section>' +
+      '<section class="como-sec"><div class="wrap"><div class="win-grid">' +
+      '<div class="win"><span class="win-ico">' + ic('bag', 26) + '</span><h3>Gana el feriante</h3><p>Precio de depósito, ganancia visible en cada producto antes de comprar' + (Lo.enabled ? ', puntos y premios' : '') + (T.enabled ? ' y beneficios que crecen con tu nivel' : '') + '.</p></div>' +
+      '<div class="win"><span class="win-ico">' + ic('users', 26) + '</span><h3>Gana el vendedor</h3><p>Cobra ' + comm().base + '% de lo que compran sus clientes, con panel propio y liquidaciones ' + esc(comm().payEvery || '') + '.</p></div>' +
+      '<div class="win"><span class="win-ico">' + ic('truck', 26) + '</span><h3>Gana el proveedor</h3><p>Llega a una red de puestos en todo Buenos Aires con un solo cliente que compra, retira y paga.</p></div>' +
+      '</div></div></section>' +
+      block('Para feriantes y revendedores', 'Cómo comprás',
+        li([
+          'Sumarte es gratis: sin inscripción, cuota ni kit obligatorio.',
+          'Pedís desde el catálogo o por WhatsApp. ' + (Number(cfg.settings.minOrder) ? 'Pedido mínimo: <b class="num">' + money(cfg.settings.minOrder) + '</b>.' : ''),
+          'En cada producto ves tu precio, el precio sugerido de venta y cuánto ganás.',
+          'Te confirmamos stock y el día de entrega por WhatsApp.',
+          shipOn() ? 'Retirás en el depósito sin costo o te lo enviamos: ' + cfg.shipping.zones.map(function (z) { return esc(z.name) + ' ' + money(z.cost); }).join(' · ') + '.' : 'Retirás en el depósito' + (c.address ? ' (' + esc(c.address) + ')' : '') + '.',
+          'Formas de pago: ' + esc(String(c.payments || 'transferencia, Mercado Pago o efectivo al retirar').replace(/\.?\s*$/, '.')) + (P.enabled ? (P.mode === 'sena' ? ' También podés pagar una seña del ' + P.pct + '% online con Mercado Pago.' : ' También podés pagar online con Mercado Pago.') : ''),
+          'Productos "por encargo": los publicamos para medir el interés y te avisamos cuándo llegan.'
+        ]) + '<div class="ctas" style="margin-top:16px"><a class="btn btn-main" href="#catalogo" data-go="catalogo">Ver el catálogo</a><a class="btn btn-line" href="#cuenta" data-go="cuenta">Crear mi cuenta</a></div>') +
+      block('Compra sin riesgo', 'Nuestras garantías', guaranteesHtml(), 'garantias') +
+      ((Lo.enabled || T.enabled) ? block('Beneficios', 'Cuanto más comprás, más ganás',
+        (T.enabled ? tiersTable(null) : '') + (Lo.enabled ? '<h3 class="sub-h">Puntos' + (Lo.raffle && Lo.raffle.enabled ? ' y sorteo' : '') + '</h3>' + basesModalHtml() + rewardsList() : '')) : '') +
+      block('Para vendedores', 'Cómo cobra un vendedor', rulesHtml() + li(['Tus clientes quedan a tu nombre con tu link, tu QR o tu código.', 'Tenés panel propio con tus ventas, tus clientes, tus comisiones y cada liquidación.', 'Te damos promos, catálogo en PDF y carteles con tu QR, listos para mandar.']) +
+        '<div class="ctas" style="margin-top:16px"><a class="btn btn-main" href="#vender" data-act="contact-go" data-type="vendedor">Quiero ser vendedor</a></div>') +
+      block('Para empresas', 'Si querés vendernos', li(['Compramos bazar, blanquería, cocina, hogar y tecno económica.', 'Pagamos en tiempo y forma, y te contamos qué se vende y qué no.', 'Podemos probar tu producto "por encargo" antes de comprar volumen.']) +
+        '<div class="ctas" style="margin-top:16px"><a class="btn btn-dark" href="#proveedores" data-act="contact-go" data-type="proveedor">Ofrecer mis productos</a></div>') +
+      block('Dónde estamos', 'Datos del negocio', '<div class="biz-card">' +
+        (c.address ? '<p>' + ic('pin', 20) + '<span><b>' + esc(c.address) + '</b>' + (c.area ? ', ' + esc(c.area) : '') + '</span></p>' : '') +
+        (c.hours ? '<p>' + ic('clock', 20) + '<span>' + esc(c.hours) + '</span></p>' : '') +
+        (ourWa() ? '<p>' + ic('wa', 20) + '<span>WhatsApp <b class="num">' + esc(ourWa()) + '</b></span></p>' : '') +
+        (c.instagram ? '<p>' + ic('camera', 20) + '<span>Instagram @' + esc(String(c.instagram).replace('@', '')) + '</span></p>' : '') +
+        (c.email ? '<p>' + ic('info', 20) + '<span>' + esc(c.email) + '</span></p>' : '') + '</div>');
+  }
+  // ---- panel: ajustes de confianza y niveles
+  function trustAdmin() {
+    var T = cfgDraft.trust = cfgDraft.trust || clone(TRUST_DEFAULT); T.guarantees = T.guarantees || [];
+    var n = trustNumbers();
+    return '<div class="panel"><h2>Confianza: números, video y garantías</h2>' +
+      '<label class="check"><input type="checkbox" data-c="trust.showNumbers"' + (T.showNumbers ? ' checked' : '') + '>Mostrar en la página los pedidos entregados y la cantidad de feriantes</label>' +
+      '<p class="hint num">Hoy: ' + (counters ? (counters.delivered || 0) + ' pedidos entregados y ' + (counters.clients || 0) + ' clientes en la web' : 'se calcula al abrir la pestaña Pedidos') + '. ' + (n ? 'Se está mostrando.' : 'Todavía no se muestra (no llega al mínimo).') + '</p>' +
+      '<div class="form-grid">' + f('Mostrar desde (pedidos entregados)', 'trust.minShow', { type: 'number', help: 'Para no mostrar números chicos al principio.' }) +
+      f('Pedidos reales anteriores a la web', 'trust.baseOrders', { type: 'number', help: 'Solo si son reales (ventas por WhatsApp o ferias antes del sitio).' }) +
+      f('Clientes reales anteriores a la web', 'trust.baseClients', { type: 'number' }) +
+      f('Video del depósito (link de YouTube)', 'trust.video', { ph: 'https://youtube.com/shorts/…', help: 'Un video corto armando un pedido real genera mucha confianza.' }) + '</div>' +
+      '<h3 class="sub-h">Garantías</h3><p class="hint">Se muestran en la página de inicio y en “Cómo trabajamos”. Prometé solo lo que vas a cumplir siempre.</p>' +
+      '<div class="glist">' + T.guarantees.map(function (g, i) {
+        return '<div class="grow"><div class="fld"><label for="g-t-' + i + '">Título</label><input id="g-t-' + i + '" data-g="' + i + '" data-gf="t" value="' + esc(g.t) + '"></div>' +
+          '<div class="fld"><label for="g-d-' + i + '">Detalle</label><textarea id="g-d-' + i + '" data-g="' + i + '" data-gf="d">' + esc(g.d) + '</textarea></div><button class="linkbtn" type="button" data-act="g-del" data-i="' + i + '">Quitar</button></div>';
+      }).join('') + '</div><button class="btn btn-line btn-sm" type="button" data-act="g-add" style="align-self:flex-start">' + ic('plus', 18) + 'Agregar garantía</button></div>';
+  }
+  function tiersAdmin() {
+    var T = cfgDraft.tiers = cfgDraft.tiers || clone(TIERS_DEFAULT); T.levels = T.levels || [];
+    return '<div class="panel"><h2>Niveles de cliente</h2><p>Cada feriante sube de nivel según lo que compró en los últimos días. Los beneficios de envío se aplican solos en el carrito cuando el cliente entra con su cuenta.</p>' +
+      '<label class="check"><input type="checkbox" data-c="tiers.enabled"' + (T.enabled ? ' checked' : '') + '>Niveles activos</label>' +
+      '<div class="form-grid">' + f('Días que se cuentan', 'tiers.days', { type: 'number' }) + '</div>' +
+      '<div class="zlist">' + T.levels.map(function (l, i) {
+        return '<div class="zrow tier-row"><div class="fld"><label for="tl-n-' + i + '">Nivel</label><input id="tl-n-' + i + '" data-tl="' + i + '" data-tf="name" value="' + esc(l.name) + '"></div>' +
+          '<div class="fld"><label for="tl-m-' + i + '">Compra desde ($)</label><input id="tl-m-' + i + '" type="number" min="0" data-tl="' + i + '" data-tf="min" value="' + esc(l.min) + '"></div>' +
+          '<div class="fld"><label for="tl-s-' + i + '">% off envío</label><input id="tl-s-' + i + '" type="number" min="0" max="100" data-tl="' + i + '" data-tf="shipOff" value="' + esc(l.shipOff) + '"></div>' +
+          '<div class="fld"><label for="tl-p-' + i + '">Puntos ×</label><input id="tl-p-' + i + '" type="number" min="1" step="0.25" data-tl="' + i + '" data-tf="ptsMult" value="' + esc(l.ptsMult) + '"></div>' +
+          '<div class="fld" style="flex:2"><label for="tl-k-' + i + '">Otro beneficio</label><input id="tl-k-' + i + '" data-tl="' + i + '" data-tf="perk" value="' + esc(l.perk || '') + '"></div>' +
+          (T.levels.length > 1 ? '<button class="linkbtn" type="button" data-act="tl-del" data-i="' + i + '">Quitar</button>' : '') + '</div>';
+      }).join('') + '</div><button class="btn btn-line btn-sm" type="button" data-act="tl-add" style="align-self:flex-start">' + ic('plus', 18) + 'Agregar nivel</button></div>';
+  }
   /* ================= al entregar: stock y puntos ================= */
   var LOYAL_DEFAULT = { enabled: false, per: 1000, rewards: [{ pts: 300, label: '$3.000 de descuento en tu próximo pedido' }, { pts: 1000, label: '$12.000 de descuento en tu próximo pedido' }],
     raffle: { enabled: false, every: 20000, prize: 'Un combo de bazar sorpresa' } };
   function loyal() { return (cfg && cfg.loyalty) || LOYAL_DEFAULT; }
   function monthKey(t) { var d = new Date(t || Date.now()); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
   function monthName(k) { var p = String(k || monthKey()).split('-'); return new Date(Number(p[0]), Number(p[1]) - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }); }
-  function ptsFor(o) { var L = loyal(); return L.enabled && Number(L.per) > 0 ? Math.floor((Number(o.total) || 0) / Number(L.per)) : 0; }
+  function ptsFor(o) {
+    var L = loyal(); if (!L.enabled || !(Number(L.per) > 0)) return 0;
+    var c = (clientsMap || {})[digits(o.phone)], lv = tiers().enabled && c && c.tier ? levelByName(c.tier.level) : null;
+    return Math.floor((Number(o.total) || 0) / Number(L.per) * (lv && Number(lv.ptsMult) > 1 ? Number(lv.ptsMult) : 1));
+  }
   function chancesFor(amount) { var r = loyal().raffle || {}; return r.enabled && Number(r.every) > 0 ? Math.floor((Number(amount) || 0) / Number(r.every)) : 0; }
   // Descuenta (o devuelve) unidades de los productos que llevan stock contado.
   function applyStock(o, sign) {
@@ -1705,7 +1944,9 @@
       if (o.stockDone) jobs.push(applyStock(o, -1));
       if (o.points) jobs.push(applyPoints(o, -1));
     }
-    return Promise.all(jobs).then(function () { return msgs.join(' '); }).catch(function () { return 'Ojo: no se pudo actualizar el stock o los puntos.'; });
+    return Promise.all(jobs).then(function () {
+      if ((st === 'entregado') !== (prev === 'entregado') && tiers().enabled) return applyTier(digits(o.phone), o.uid || null).then(function (up) { if (up) msgs.push(String(o.name || '').split(' ')[0] + ' ahora es nivel ' + up + '.'); });
+    }).then(function () { return msgs.join(' '); }).catch(function () { return 'Ojo: no se pudo actualizar el stock, los puntos o el nivel.'; });
   }
   /* ================= puntos, canjes y sorteo ================= */
   var lastDraw = null, drawRes = null, redeemFor = null, freeForm = { name: '', phone: '' };
@@ -1739,13 +1980,17 @@
     return '<ul class="rules">' + loyaltyRulesText().map(function (x) { return '<li>' + ic('check', 18) + '<span>' + esc(x) + '</span></li>'; }).join('') + '</ul>';
   }
   function loyaltyLanding() {
-    var L = loyal(); if (!L.enabled) return '';
-    if (lastDraw === null) { lastDraw = false; loadLastDraw(); }
+    var L = loyal(), T = tiers(); if (!L.enabled && !T.enabled) return '';
+    if (L.enabled && lastDraw === null) { lastDraw = false; loadLastDraw(); }
     var r = L.raffle || {};
-    return '<section class="loyal-band"><div class="wrap loyal-grid"><div><span class="eyebrow">Programa de puntos</span><h2 class="h2">Cuanto más comprás, más ganás</h2>' +
-      '<p class="lead">Sumá 1 punto cada ' + money(L.per) + ' y canjealos por descuentos.' + (r.enabled ? ' Además, cada ' + money(r.every) + ' que comprás en el mes es una chance en el sorteo de <b>' + esc(r.prize) + '</b>.' : '') + '</p>' +
-      '<div class="ctas"><a class="btn btn-main" href="#cuenta" data-go="cuenta">' + (user ? 'Ver mis puntos' : 'Crear mi cuenta y sumar') + '</a><button class="btn btn-line" type="button" data-act="bases">Bases y condiciones</button></div></div>' +
-      '<div class="loyal-side">' + rewardsList() + (lastDraw ? '<div class="winner">' + ic('check', 20) + '<span>Ganador/a de ' + esc(monthName(lastDraw.month)) + ': <b>' + esc(lastDraw.name) + '</b>' + (lastDraw.barrio ? ' de ' + esc(lastDraw.barrio) : '') + '</span></div>' : '') + '</div>' +
+    var lead = [];
+    if (T.enabled) lead.push('Tu nivel sube con lo que comprás: ' + levelsSorted().map(function (l) { return esc(l.name); }).join(', ') + '. Cada nivel tiene mejores beneficios.');
+    if (L.enabled) lead.push('Sumá 1 punto cada ' + money(L.per) + ' y canjealos por descuentos.' + (r.enabled ? ' Cada ' + money(r.every) + ' que comprás en el mes es una chance en el sorteo de <b>' + esc(r.prize) + '</b>.' : ''));
+    return '<section class="loyal-band"><div class="wrap"><div class="loyal-grid"><div><span class="eyebrow">Programa de beneficios</span><h2 class="h2">Cuanto más comprás, más ganás</h2>' +
+      '<p class="lead">' + lead.join(' ') + '</p>' +
+      '<div class="ctas"><a class="btn btn-main" href="#cuenta" data-go="cuenta">' + (user ? 'Ver mis beneficios' : 'Crear mi cuenta y sumar') + '</a>' + (L.enabled ? '<button class="btn btn-line" type="button" data-act="bases">Bases y condiciones</button>' : '') + '</div></div>' +
+      '<div class="loyal-side">' + (L.enabled ? rewardsList() : '') + (lastDraw ? '<div class="winner">' + ic('check', 20) + '<span>Ganador/a de ' + esc(monthName(lastDraw.month)) + ': <b>' + esc(lastDraw.name) + '</b>' + (lastDraw.barrio ? ' de ' + esc(lastDraw.barrio) : '') + '</span></div>' : '') + '</div></div>' +
+      (T.enabled ? '<div class="loyal-tiers">' + tiersTable(null) + '</div>' : '') +
       '</div></section>';
   }
   function myPointsPanel() {
@@ -1761,17 +2006,26 @@
       '<a class="btn btn-line btn-sm" href="' + esc(waLink('Hola ' + cfg.brand.name + '! Quiero canjear mis puntos (' + pts + ' pts). Soy ' + (customer.name || '') + '.')) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Canjear por WhatsApp</a></div>';
   }
   // ---- panel: pestaña Puntos
+  function tiersPanel() {
+    var T = tiers();
+    if (!T.enabled) return '<div class="panel"><h2>Niveles de cliente</h2><p>Están apagados. Activalos en <b>Datos y ajustes → Niveles de cliente</b>.</p></div>';
+    var by = {}; levelsSorted().forEach(function (l) { by[l.name] = 0; });
+    Object.keys(clientsMap || {}).forEach(function (k) { var t = clientsMap[k].tier; if (t && by[t.level] !== undefined) by[t.level]++; });
+    return '<div class="panel"><div class="sec-row" style="margin:0"><h2>Niveles de cliente</h2><button class="btn btn-line btn-sm" type="button" data-act="recalc-tiers"' + (orders ? '' : ' disabled') + '>Recalcular niveles</button></div>' +
+      '<div class="tiles">' + levelsSorted().map(function (l) { return tile(esc(l.name), String(by[l.name] || 0), Number(l.min) ? 'desde ' + money(l.min) : 'todos los clientes'); }).join('') + '</div>' +
+      '<p class="hint">Se actualizan solos al entregar cada pedido. Recalculá una vez por semana para que bajen de nivel los que dejaron de comprar.</p></div>';
+  }
   function pointsAdmin() {
     var L = loyal();
-    if (!L.enabled) return '<div class="panel"><h2>Puntos y sorteo</h2><p>El programa está apagado. Activalo y definí los premios en <b>Datos y ajustes → Puntos y sorteo</b>.</p><button class="btn btn-main btn-sm" type="button" data-act="tab" data-tab="negocio">Ir a Datos y ajustes</button></div>';
     if (!clientsMap) return '<div class="panel"><p>Cargando clientes…</p></div>';
+    if (!L.enabled) return tiersPanel() + '<div class="panel"><h2>Puntos y sorteo</h2><p>El programa está apagado. Activalo y definí los premios en <b>Datos y ajustes → Puntos y sorteo</b>.</p><button class="btn btn-main btn-sm" type="button" data-act="tab" data-tab="negocio">Ir a Datos y ajustes</button></div>';
     var mk = monthKey(), r = L.raffle || {};
     if (lastDraw === null) { lastDraw = false; loadLastDraw(); }
     var list = Object.keys(clientsMap).map(function (k) { var c = clientsMap[k]; return { ph: k, c: c, pts: Number(c.points) || 0, ch: clientChances(c, mk), amt: c.month && c.month.key === mk ? Number(c.month.amount) || 0 : 0 }; })
       .filter(function (x) { return x.pts || x.ch || x.amt; }).sort(function (a, b) { return b.ch - a.ch || b.pts - a.pts; });
     var totCh = list.reduce(function (m, x) { return m + x.ch; }, 0), totPts = list.reduce(function (m, x) { return m + x.pts; }, 0);
     var prevMk = monthKey(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 15).getTime());
-    return '<div class="panel"><h2>Puntos y sorteo</h2><div class="tiles">' +
+    return tiersPanel() + '<div class="panel"><h2>Puntos y sorteo</h2><div class="tiles">' +
       tile('Chances en ' + monthName(mk), String(totCh), list.filter(function (x) { return x.ch; }).length + ' participantes') +
       tile('Puntos sin canjear', totPts.toLocaleString('es-AR'), 'entre todos los clientes') +
       tile('Último sorteo', lastDraw ? esc(lastDraw.name) : '—', lastDraw ? monthName(lastDraw.month) : 'todavía no hubo') + '</div>' +
@@ -2022,7 +2276,8 @@
       '<p>Armá la imagen para mandar por la lista de difusión, subir a estados o imprimir. En todas figura <b>el WhatsApp del negocio' + (ourWa() ? ' (' + esc(ourWa()) + ')' : '') + '</b>.</p>' +
       '<div class="ctas" style="margin-top:14px"><button class="btn btn-main btn-sm" type="button" data-act="poster" data-type="promo">' + ic('share', 18) + 'Armar promo con productos</button>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="qr">' + ic('qr', 18) + 'Cartel con QR</button>' +
-      '<button class="btn btn-dark btn-sm" type="button" data-act="catpdf">Catálogo en PDF con fotos</button></div></div>' +
+      '<button class="btn btn-dark btn-sm" type="button" data-act="catpdf">Catálogo en PDF con fotos</button>' +
+      '<button class="btn btn-line btn-sm" type="button" data-act="labels">Etiquetas de precio</button></div></div>' +
       '<div class="panel"><h2>' + ic('megaphone', 22) + ' QR del canal de ofertas</h2>' +
       '<p>' + (hasChannel() ? 'Al escanearlo se abre tu canal de WhatsApp.' : 'Al escanearlo se abre WhatsApp con un mensaje listo para pedir que lo sumes a la lista de difusión (“Vengo de parte de…” si es de un vendedor).') +
       ' El QR apunta a la web y de ahí salta al canal: si mañana cambiás el canal, los carteles impresos siguen andando.</p>' +
@@ -2201,6 +2456,7 @@
       '<a class="btn btn-main btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareFeriante) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Mandar el catálogo a un feriante</a>' +
       '<button class="btn btn-dark btn-sm" type="button" data-act="poster" data-type="promo" data-code="' + esc(sellerCode) + '">' + ic('share', 18) + 'Promo con productos para mandar</button>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="catpdf" data-code="' + esc(sellerCode) + '">Catálogo en PDF con tu QR</button>' +
+      '<button class="btn btn-line btn-sm" type="button" data-act="labels">Etiquetas de precio para los puestos</button>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="qr" data-code="' + esc(sellerCode) + '">' + ic('camera', 18) + 'Cartel con tu QR para el puesto</button>' +
       (Number(comm().override) > 0 ? '<a class="btn btn-line btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareVend) + '" target="_blank" rel="noopener">' + ic('users', 18) + 'Invitar a otro vendedor</a>' : '') +
       '</div></div></div>' +
@@ -2865,13 +3121,13 @@
     var active = document.activeElement && document.activeElement.id;
     if (view === 'admin' && isClient()) { view = 'cuenta'; setHash('cuenta'); }
     if (view === 'cuenta' && (isStaff() || isSeller())) view = 'admin';
-    var main = view === 'canal' ? canalView() : view === 'catalogo' ? catalog() : view === 'admin' ? adminView() : view === 'cuenta' ? accountView() : view === 'contacto' ? contactView() : landing();
+    var main = view === 'como' ? comoView() : view === 'canal' ? canalView() : view === 'catalogo' ? catalog() : view === 'admin' ? adminView() : view === 'cuenta' ? accountView() : view === 'contacto' ? contactView() : landing();
     var t = cartTotals();
     document.body.classList.toggle('has-cart', !!t.count && view !== 'admin');
-    document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster || importer || catPdf || drawRes || catMgr));
+    document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster || importer || catPdf || drawRes || catMgr || labels));
     app.innerHTML = header() + '<main>' + main + '</main>' + (view === 'admin' ? '' : footer()) +
       (view === 'admin' || view === 'canal' ? '' : '<a class="wa-float" href="' + esc(waLink('Hola ' + cfg.brand.name + '!')) + '" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">' + ic('wa', 30) + '</a>') +
-      cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal() + importModal() + catsModal() + catalogModal() + drawModal();
+      cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal() + importModal() + catsModal() + labelsModal() + catalogModal() + drawModal();
     if (keepScroll) window.scrollTo(0, y);
     if (view === 'admin' && isSeller()) drawQR();
     if (active) {
@@ -2885,7 +3141,7 @@
   function setHash(h) { try { history.replaceState(null, '', h ? '#' + h : location.pathname); } catch (e) {} }
   function go(v) {
     view = v; cartOpen = false; share = null; detailId = null;
-    setHash(v); render(); window.scrollTo(0, 0);
+    setHash(v === 'como' ? 'como-trabajamos' : v); render(); window.scrollTo(0, 0);
     if (v === 'admin' && isStaff() && orders === null) loadOrders();
     if (v === 'cuenta' && isClient()) loadMyOrders();
   }
@@ -3031,6 +3287,12 @@
     d.payments = d.payments || clone(PAY_DEFAULT);
     d.payments.enabled = !!d.payments.enabled; d.payments.pct = Math.min(100, Math.max(1, Number(d.payments.pct) || 30));
     d.notify = { auto: !(d.notify && d.notify.auto === false) };
+    d.trust = d.trust || clone(TRUST_DEFAULT);
+    d.trust = { showNumbers: !!d.trust.showNumbers, minShow: Math.max(0, Number(d.trust.minShow) || 0), baseOrders: Math.max(0, Number(d.trust.baseOrders) || 0), baseClients: Math.max(0, Number(d.trust.baseClients) || 0),
+      video: String(d.trust.video || '').trim().slice(0, 200), guarantees: (d.trust.guarantees || []).filter(function (g) { return g && String(g.t || '').trim(); }).map(function (g) { return { t: String(g.t).trim().slice(0, 60), d: String(g.d || '').trim().slice(0, 240) }; }) };
+    d.tiers = d.tiers || clone(TIERS_DEFAULT);
+    d.tiers = { enabled: !!d.tiers.enabled, days: Math.max(7, Number(d.tiers.days) || 90), levels: (d.tiers.levels || []).filter(function (l) { return String(l.name || '').trim(); }).map(function (l) { return { name: String(l.name).trim().slice(0, 20), min: Math.max(0, Number(l.min) || 0), shipOff: Math.min(100, Math.max(0, Number(l.shipOff) || 0)), ptsMult: Math.max(1, Number(l.ptsMult) || 1), perk: String(l.perk || '').trim().slice(0, 80) }; }).sort(function (a, b) { return a.min - b.min; }) };
+    if (d.tiers.levels.length) d.tiers.levels[0].min = 0;
     if (d.contact.channel && !/^https?:\/\//.test(d.contact.channel)) { setToast('El link del canal tiene que empezar con https://'); return; }
     busy = true; render(true);
     fb.db.collection('site').doc('main').set(d).then(function () {
@@ -3044,6 +3306,7 @@
     fb.db.collection('orders').orderBy('createdAt', 'desc').limit(500).get().then(function (snap) {
       orders = snap.docs.map(function (d) { var o = d.data(); o.id = d.id; return o; });
       if (view === 'admin') render(true);
+      if (counters !== null) computeCounters(); else setTimeout(computeCounters, 1500);
     }).catch(function () { ordersErr = 'No se pudieron cargar los pedidos.'; if (view === 'admin') render(true); });
   }
   function loadTeam() {
@@ -3081,7 +3344,7 @@
       shipping: shippingCost(),
       grand: t.total + shippingCost(),
       delivery: effMode() === 'envio'
-        ? { mode: 'envio', zone: String(buyer.zone || '').slice(0, 60), address: String(buyer.address || '').slice(0, 160), cost: shippingCost(), eta: String((zoneByName(buyer.zone) || {}).eta || '').slice(0, 60) }
+        ? Object.assign({ mode: 'envio', zone: String(buyer.zone || '').slice(0, 60), address: String(buyer.address || '').slice(0, 160), cost: shippingCost(), eta: String((zoneByName(buyer.zone) || {}).eta || '').slice(0, 60) }, shipOffPct() && shipBase() ? { base: shipBase(), benefit: 'Nivel ' + myLevel().name } : {})
         : { mode: 'retiro' },
       status: 'nuevo',
       createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
@@ -3258,6 +3521,16 @@
         break;
       }
       case 'e-cat-create': if (editing) addCat(editing._newCatVal, function (n) { editing.cat = n; editing._newCat = false; editing._newCatVal = ''; }); break;
+      case 'labels': openLabels(); break;
+      case 'close-labels': labels = null; render(true); break;
+      case 'lab-size': labels.size = a.getAttribute('data-size'); render(true); break;
+      case 'lab-print': printLabels(); break;
+      case 'play-yt': { var vc = a.closest('.video-card'); if (vc) vc.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + esc(vc.getAttribute('data-yt')) + '?autoplay=1&rel=0" title="Video del depósito" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>'; break; }
+      case 'g-add': cfgDraft.trust.guarantees.push({ t: '', d: '' }); render(true); break;
+      case 'g-del': cfgDraft.trust.guarantees.splice(Number(a.getAttribute('data-i')), 1); render(true); break;
+      case 'tl-add': cfgDraft.tiers.levels.push({ name: '', min: 0, shipOff: 0, ptsMult: 1, perk: '' }); render(true); break;
+      case 'tl-del': cfgDraft.tiers.levels.splice(Number(a.getAttribute('data-i')), 1); render(true); break;
+      case 'recalc-tiers': recalcTiers(a); break;
       case 'plow': pLow = !pLow; render(true); break;
       case 'new-prod': editing = blankProduct(); render(true); break;
       case 'cat-go': e.preventDefault(); cat = a.getAttribute('data-cat'); go('catalogo'); break;
@@ -3324,6 +3597,10 @@
     if (t.id === 'cat-move' && catMgr) { catMgr.moveTo = t.value; return; }
     if (t.id === 'e-newcat' && editing) { editing._newCatVal = t.value; return; }
     if (t.id === 'e-cat' && editing && t.value === '__new') { editing._newCat = true; render(true); setTimeout(function () { var el = document.getElementById('e-newcat'); if (el) el.focus(); }, 0); return; }
+    if (t.id === 'lab-copies' && labels) { labels.copies = Math.min(24, Math.max(1, Math.round(Number(t.value) || 1))); var lb = document.querySelector('[data-act=lab-print]'); if (lb) lb.textContent = 'Imprimir ' + (labels.sel.length * labels.copies) + ' etiquetas'; return; }
+    if (t.id === 'lab-q' && labels) { labels.q = t.value; render(true); return; }
+    if (t.hasAttribute('data-g') && cfgDraft) { cfgDraft.trust.guarantees[Number(t.getAttribute('data-g'))][t.getAttribute('data-gf')] = t.value; refreshCfgBar(); return; }
+    if (t.hasAttribute('data-tl') && cfgDraft) { var tlf = t.getAttribute('data-tf'); cfgDraft.tiers.levels[Number(t.getAttribute('data-tl'))][tlf] = tlf === 'name' || tlf === 'perk' ? t.value : Number(t.value) || 0; refreshCfgBar(); return; }
     if (t.hasAttribute('data-ff')) { freeForm[t.getAttribute('data-ff')] = t.value; return; }
     if (t.hasAttribute('data-rw') && cfgDraft) { var rwi = Number(t.getAttribute('data-rw')), rwf = t.getAttribute('data-rf'); cfgDraft.loyalty.rewards[rwi][rwf] = rwf === 'pts' ? (Number(t.value) || 0) : t.value; refreshCfgBar(); return; }
     if (t.id === 'l-phone') { loginPhone = t.value; return; }
@@ -3357,6 +3634,7 @@
     if (t.type === 'checkbox' || t.tagName === 'SELECT') t.dispatchEvent(new Event('input', { bubbles: true }));
     if (t.id === 'rsort') { rSort = t.value; render(true); return; }
     if (t.hasAttribute('data-catpdf') && catPdf) { var cc2 = t.getAttribute('data-catpdf'), ci = catPdf.cats.indexOf(cc2); if (t.checked && ci === -1) catPdf.cats.push(cc2); if (!t.checked && ci !== -1) catPdf.cats.splice(ci, 1); catPdf.url = null; render(true); return; }
+    if (t.hasAttribute('data-lab') && labels) { var lid2 = t.getAttribute('data-lab'), lix = labels.sel.indexOf(lid2); if (t.checked && lix === -1) labels.sel.push(lid2); if (!t.checked && lix !== -1) labels.sel.splice(lix, 1); render(true); return; }
     if (t.id === 'catpdf-stock' && catPdf) { catPdf.onlyStock = t.checked; catPdf.url = null; render(true); return; }
     if (t.hasAttribute('data-pick') && poster) {
       var pid = t.getAttribute('data-pick'), ix = poster.sel.indexOf(pid);
@@ -3436,7 +3714,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    if (catMgr && !catMgr.busy) catMgr = null; else if (poster) poster = null; else if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
+    if (labels) labels = null; else if (catMgr && !catMgr.busy) catMgr = null; else if (poster) poster = null; else if (editing) editing = null; else if (share) share = null; else if (detailId) { detailId = null; setHash(view); } else if (cartOpen) cartOpen = false; else return;
     render(true);
   });
   window.addEventListener('hashchange', function () {
@@ -3484,6 +3762,9 @@
       cfg.loyalty = Object.assign(clone(LOYAL_DEFAULT), cfg.loyalty || {}); cfg.loyalty.raffle = Object.assign(clone(LOYAL_DEFAULT.raffle), cfg.loyalty.raffle || {});
       cfg.payments = Object.assign(clone(PAY_DEFAULT), cfg.payments || {});
       cfg.notify = Object.assign({ auto: true }, cfg.notify || {});
+      cfg.trust = Object.assign(clone(TRUST_DEFAULT), cfg.trust || {});
+      cfg.tiers = Object.assign(clone(TIERS_DEFAULT), cfg.tiers || {});
+      loadCounters();
       loadServerStatus();
       start();
       var rc = cleanCode(buyer.ref || refCode);
