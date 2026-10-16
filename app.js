@@ -25,6 +25,9 @@
   var sellers = null, sellersMap = {}, clientsMap = null, payouts = null, statsMap = null;
   var sellerData = null, sellerForm = null;
   var refCode = '', refName = '';
+  var customer = null, myOrders = null, custForm = null; // cuenta de cliente
+  var goCanal = false;           // entró por el QR del canal (?go=canal)
+  try { goCanal = new URLSearchParams(location.search).get('go') === 'canal'; } catch (e) {}
 
   try { cart = JSON.parse(sessionStorage.getItem('galpon-cart') || '{}') || {}; } catch (e) { cart = {}; }
   try { buyer = JSON.parse(localStorage.getItem('galpon-buyer') || 'null') || buyer; } catch (e) {}
@@ -47,7 +50,8 @@
   function readHash() {
     var h = (location.hash || '').replace('#', '');
     if (h.indexOf('producto-') === 0) { view = 'catalogo'; detailId = h.slice(9); return; }
-    if (h === 'catalogo' || h === 'admin' || h === 'inicio' || h === 'contacto') view = h;
+    if (h === 'catalogo' || h === 'admin' || h === 'inicio' || h === 'contacto' || h === 'cuenta') view = h;
+    if (h === 'ingresar' || h === 'mis-pedidos') view = 'cuenta';
     if (h === 'proveedores') { view = 'contacto'; contactType = 'proveedor'; }
     if (h === 'vender') { view = 'contacto'; contactType = 'vendedor'; }
   }
@@ -62,6 +66,21 @@
   function money(n) { return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR'); }
   function digits(s) { return String(s || '').replace(/\D/g, ''); }
   function waLink(text) { return 'https://wa.me/' + digits(cfg.contact.whatsapp) + '?text=' + encodeURIComponent(text); }
+  // Nuestro WhatsApp tal como se muestra (en banners, carteles y la web)
+  function ourWa() {
+    var d = cfg.contact.whatsappDisplay, w = cfg.contact.whatsapp;
+    if (!w && !d) return '';
+    return d && digits(d) !== digits(w) ? d : fmtPhone(w || d);
+  }
+  // Canal de difusión: el QR apunta siempre a nuestro sitio (?go=canal) y de ahí salta al canal.
+  // Así el QR impreso sirve aunque cambie el link del canal, y el vendedor queda registrado.
+  function hasChannel() { return /^https?:\/\//.test(String(cfg.contact.channel || '').trim()); }
+  function canalLink(code) { return location.origin + '/?' + (code ? 'v=' + code + '&' : '') + 'go=canal'; }
+  function canalMsg(code, name) {
+    return 'Hola ' + cfg.brand.name + '! Quiero sumarme a la lista de difusión para recibir el catálogo y las ofertas.' +
+      (code ? ' Vengo de parte de ' + (name ? name + ', ' : '') + 'código ' + code + '.' : '');
+  }
+  function canalTarget(code, name) { return hasChannel() ? String(cfg.contact.channel).trim() : waLink(canalMsg(code, name)); }
   function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function onOffer(p) { return Number(p.offer) > 0 && Number(p.offer) < Number(p.price) && !!p.offerUntil && p.offerUntil >= todayStr(); }
   function priceOf(p) { return onOffer(p) ? Number(p.offer) : (Number(p.price) || 0); }
@@ -156,7 +175,11 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     users: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21 20c0-2.6-1.7-4.9-4-5.7"/>',
     edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
-    truck: '<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>'
+    truck: '<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>',
+    megaphone: '<path d="M3 10v4h3l7 4V6L6 10H3Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+    repeat: '<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>',
+    qr: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>'
   };
   function ic(name, size) {
     var s = size || 22;
@@ -173,8 +196,9 @@
       '<a href="#inicio" data-go="inicio" class="' + (view === 'inicio' ? 'on' : '') + '">Inicio</a>' +
       '<a href="#catalogo" data-go="catalogo" class="' + (view === 'catalogo' ? 'on' : '') + '">Catálogo</a>' +
       '<a href="#contacto" data-go="contacto" class="' + (view === 'contacto' ? 'on' : '') + '">Contacto</a>' +
-      ((isStaff() || isSeller() || view === 'admin') ? '<a href="#admin" data-go="admin" class="' + (view === 'admin' ? 'on' : '') + '">Panel</a>' : '') +
+      ((isStaff() || isSeller()) ? '<a href="#admin" data-go="admin" class="' + (view === 'admin' ? 'on' : '') + '">Panel</a>' : '') +
       '</nav>' +
+      ((isStaff() || isSeller()) ? '' : '<a class="acct-btn' + (view === 'cuenta' ? ' on' : '') + '" href="#cuenta" data-go="cuenta" aria-label="' + (user ? 'Mi cuenta y mis pedidos' : 'Ingresar') + '">' + ic('user', 20) + '<span>' + (user ? 'Mi cuenta' : 'Ingresar') + '</span></a>') +
       (view === 'admin' ? '' : '<button class="cart-btn" type="button" data-act="open-cart" aria-label="Ver mi pedido">' + ic('bag') + (t.count ? '<span class="badge num">' + t.count + '</span>' : '') + '</button>') +
       '</div></header>';
   }
@@ -216,7 +240,6 @@
     var feat = products.filter(function (p) { return p.featured && !onOffer(p); }).slice(0, 4);
     if (!feat.length) feat = products.filter(function (p) { return !onOffer(p); }).slice(0, 4);
     var ex = feat[0] || { name: 'Producto', price: 0, sug: 0, img: im.depB };
-    var joinMsg = 'Hola ' + cfg.brand.name + '! Quiero sumarme como revendedor.';
     var sellMsg = 'Hola ' + cfg.brand.name + '! Quiero ser vendedor en mi zona.';
     return '' +
       '<section class="hero"><div class="wrap hero-grid">' +
@@ -225,7 +248,7 @@
       '<h1>Ganá plata extra vendiendo <em>cosas para la casa</em></h1>' +
       '<p class="lead">Bazar, blanquería, cocina y tecno a precio de depósito para feriantes y revendedores de todo Buenos Aires. Elegís del catálogo, ' + (shipOn() ? 'retirás o te lo enviamos' : 'retirás en el depósito') + ' y lo vendés en tu puesto o en tu barrio.</p>' +
       '<div class="ctas"><a class="btn btn-main" href="#catalogo" data-go="catalogo">Ver catálogo y precios</a>' +
-      '<a class="btn btn-line" href="' + esc(waLink(joinMsg)) + '" target="_blank" rel="noopener">' + ic('wa') + 'Quiero revender</a></div>' +
+      '<a class="btn btn-line" href="' + esc(canalTarget(refName ? refCode : '', refName)) + '" target="_blank" rel="noopener">' + ic('wa') + 'Recibir ofertas por WhatsApp</a></div>' +
       '<div class="checks"><span>' + ic('check', 18) + 'Sin cuota ni inscripción</span><span>' + ic('check', 18) + (shipOn() ? 'Retiro o envío a tu zona' : 'Pagás cuando ves la mercadería') + '</span></div>' +
       '</div>' +
       '<div class="hero-pic"><img src="' + esc(im.hero) + '" alt="Mercadería en el depósito">' +
@@ -572,7 +595,7 @@
       '<div><b>' + esc(cfg.brand.name) + '</b><div>' + esc(cfg.brand.tagline) + '</div></div>' +
       '<nav class="foot-links" aria-label="Enlaces"><a href="#catalogo" data-go="catalogo">Catálogo</a><a href="#vender" data-act="contact-go" data-type="vendedor">Quiero vender</a><a href="#proveedores" data-act="contact-go" data-type="proveedor">Proveedores</a><a href="#contacto" data-go="contacto">Contacto</a></nav>' +
       '<div>' + (c.address ? esc(c.address) + (c.area ? ', ' + esc(c.area) : '') + '<br>' : '') +
-      (c.whatsappDisplay || c.whatsapp ? 'WhatsApp ' + esc(c.whatsappDisplay || c.whatsapp) : '') +
+      (ourWa() ? 'WhatsApp ' + esc(ourWa()) : '') +
       (ig ? (c.whatsappDisplay || c.whatsapp ? ' · ' : '') + 'Instagram ' + esc(ig) : '') + '</div>' +
       '</div></footer>';
   }
@@ -624,7 +647,7 @@
       : 'Se abre WhatsApp con el pedido escrito: solo tocás Enviar.';
     return { ready: !!(t.count && !short && nameOk && phoneOk && zoneOk && addrOk && digits(cfg.contact.whatsapp)), hint: hint };
   }
-  function orderRef() { return refName ? refCode : cleanCode(buyer.ref); }
+  function orderRef() { return refName ? refCode : (cleanCode(buyer.ref) || (isSeller() && sellerCode ? sellerCode : '')); }
   function orderMessage(code) {
     var t = cartTotals(), ship = shippingCost(), envio = effMode() === 'envio';
     var lines = cartLines().map(function (l) { return '• ' + l.q + ' x ' + (l.p.sku ? '[' + l.p.sku + '] ' : '') + l.p.name + ' (' + money(priceOf(l.p)) + ' c/u)' + (l.p.stock === 'order' ? ' · por encargo' : ''); });
@@ -651,6 +674,7 @@
         '</div>' + (cfg.shipping.note ? '<small class="hint">' + esc(cfg.shipping.note) + '</small>' : '') : '');
   }
   function refField() {
+    if (isSeller() && sellerCode && !refName && !buyer.ref) return '<div class="ref-chip">' + ic('users', 18) + '<span>Este pedido queda a tu nombre · código <b>' + esc(sellerCode) + '</b></span></div>';
     if (refName) return '<div class="ref-chip">' + ic('users', 18) + '<span>Te atiende <b>' + esc(refName) + '</b> · código ' + esc(refCode) + '</span></div>';
     return '<div class="fld"><label for="b-ref">Código de vendedor <span class="opt">(opcional)</span></label><input id="b-ref" data-buyer="ref" value="' + esc(buyer.ref || '') + '" maxlength="12" autocapitalize="characters" placeholder="Si te recomendó alguien"></div>';
   }
@@ -664,6 +688,7 @@
         '<h3>¡Listo! Tu pedido quedó registrado</h3>' +
         '<p>Si WhatsApp no se abrió o no lo enviaste, tocá el botón para mandarlo. Te confirmamos stock y día de retiro.</p>' +
         '<a class="btn btn-main" href="' + esc(lastOrder.link) + '" target="_blank" rel="noopener">' + ic('wa') + 'Abrir WhatsApp de nuevo</a>' +
+        (isClient() ? '<a class="btn btn-line btn-sm" href="#cuenta" data-go="cuenta">Ver el estado en Mi cuenta</a>' : '') +
         '<button class="btn btn-line btn-sm" type="button" data-act="new-order">Hacer otro pedido</button>' +
         '</div></div></aside></div>';
     }
@@ -692,6 +717,8 @@
         '</div>' +
         '<button id="send-order" class="btn btn-main" type="button" data-act="send-order"' + (ready && !sending ? '' : ' disabled') + '>' + ic('wa') + (sending ? 'Enviando…' : 'Enviar pedido por WhatsApp') + '</button>' +
         '<small id="send-hint" style="color:var(--ink-3)">' + esc(hint) + '</small>' +
+        (isClient() ? '<small class="acct-hint">' + ic('check', 14) + 'Queda guardado en Mi cuenta, con su estado.</small>'
+          : !user && fb ? '<small class="acct-hint">¿Querés seguir tus pedidos? <a href="#cuenta" data-go="cuenta">Ingresá o creá tu cuenta</a> antes de enviarlo.</small>' : '') +
         '</div>' : '') +
       '</aside></div>';
   }
@@ -712,47 +739,184 @@
   /* ================= panel ================= */
   var loginMode = 'login'; // login | signup | reset
   var loginMsg = '';
-  var loginEmail = '', loginPass = '';
+  var loginEmail = '', loginPass = '', loginName = '', loginPhone = '';
+  var pendingProfile = null;   // datos del registro hasta que se guarda la ficha
   function loginPanel() {
-    var body;
-    if (!authReady) body = '<p>Cargando…</p>';
-    else if (user && !user.emailVerified) {
-      body = '<p>Te mandamos un mail a <b>' + esc(user.email) + '</b> para verificar tu cuenta. Abrí el link (revisá también correo no deseado) y después tocá “Ya verifiqué”.</p>' +
-        '<div class="ctas"><button class="btn btn-main btn-sm" type="button" data-act="verified">Ya verifiqué</button>' +
-        '<button class="btn btn-line btn-sm" type="button" data-act="resend">Reenviar mail</button>' +
-        '<button class="btn btn-line btn-sm" type="button" data-act="logout">Salir</button></div>';
+    if (!authReady) return '<div class="wrap admin"><div class="panel" style="max-width:460px"><p>Cargando…</p></div></div>';
+    if (user) {
+      // Sesión iniciada pero sin acceso al panel (solo llega acá si entró por #admin)
+      return '<div class="wrap admin"><div class="panel" style="max-width:520px"><h2>Panel</h2>' +
+        (user.emailVerified ? '<p>Entraste como <b>' + esc(user.email) + '</b>, pero esa cuenta no tiene acceso al panel. Si sos vendedor o del equipo, pedí que te sumen con este mismo mail.</p>'
+          : verifyBox()) +
+        '<div class="ctas"><a class="btn btn-main btn-sm" href="#cuenta" data-go="cuenta">Ir a mi cuenta</a><button class="btn btn-line btn-sm" type="button" data-act="logout">Salir</button></div>' +
+        (loginMsg ? '<p class="login-msg">' + esc(loginMsg) + '</p>' : '') + '</div></div>';
     }
-    else if (user) body = '<p>Entraste como <b>' + esc(user.email) + '</b>, pero esa cuenta todavía no tiene acceso al panel. Pedile al administrador que te sume en “Equipo” con este mismo mail.</p><button class="btn btn-line btn-sm" type="button" data-act="logout">Salir y entrar con otra cuenta</button>';
-    else {
-      var title = loginMode === 'signup' ? 'Crear tu acceso' : loginMode === 'reset' ? 'Recuperar contraseña' : 'Ingresar';
-      body = '<p style="color:var(--ink-2)">' + (loginMode === 'signup'
-        ? 'Usá el mismo mail con el que te sumaron al equipo. Te vamos a mandar un mail para verificarlo.'
-        : loginMode === 'reset' ? 'Te mandamos un link para crear una contraseña nueva.'
-        : 'Con tu mail y contraseña, o con tu cuenta de Google.') + '</p>' +
-        '<form id="login-form" style="display:flex;flex-direction:column;gap:12px" novalidate>' +
-        '<div class="fld"><label for="l-email">Mail</label><input id="l-email" type="email" autocomplete="email" required value="' + esc(loginEmail) + '"></div>' +
-        (loginMode !== 'reset' ? '<div class="fld"><label for="l-pass">Contraseña' + (loginMode === 'signup' ? ' (mínimo 6 caracteres)' : '') + '</label><input id="l-pass" type="password" autocomplete="' + (loginMode === 'signup' ? 'new-password' : 'current-password') + '" required value="' + esc(loginPass) + '"></div>' : '') +
-        '<button class="btn btn-main" type="submit"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Un momento…' : loginMode === 'signup' ? 'Crear acceso' : loginMode === 'reset' ? 'Mandarme el link' : 'Ingresar') + '</button>' +
-        '</form>' +
-        (loginMsg ? '<p class="login-msg">' + esc(loginMsg) + '</p>' : '') +
-        '<div class="login-links">' +
-        (loginMode !== 'login' ? '<button type="button" class="linkbtn" data-act="mode" data-mode="login">Ya tengo acceso: ingresar</button>' : '<button type="button" class="linkbtn" data-act="mode" data-mode="signup">Es mi primera vez: crear acceso</button><button type="button" class="linkbtn" data-act="mode" data-mode="reset">Olvidé mi contraseña</button>') +
-        '</div>' +
-        '<div class="login-sep"><span>o</span></div>' +
-        '<button class="btn btn-line" type="button" data-act="login">Ingresar con Google</button>';
-      return '<div class="wrap admin"><div class="panel" style="max-width:460px"><h2>' + title + '</h2>' + body + '</div></div>';
-    }
-    return '<div class="wrap admin"><div class="panel" style="max-width:520px"><h2>Panel</h2>' + body +
-      (loginMsg ? '<p class="login-msg">' + esc(loginMsg) + '</p>' : '') + '</div></div>';
+    var signup = loginMode === 'signup', reset = loginMode === 'reset';
+    var title = signup ? 'Creá tu cuenta' : reset ? 'Recuperar contraseña' : 'Ingresá a tu cuenta';
+    var sub = signup ? 'Es gratis. Si sos vendedor o del equipo, usá el mismo mail con el que te sumamos.'
+      : reset ? 'Te mandamos un link para crear una contraseña nueva.'
+      : 'Clientes, vendedores y equipo entran por acá.';
+    var form = '<form id="login-form" class="login-form" novalidate>' +
+      (signup ? '<div class="fld"><label for="l-name">Tu nombre</label><input id="l-name" autocomplete="name" required value="' + esc(loginName) + '"></div>' +
+        '<div class="fld"><label for="l-phone">Tu WhatsApp</label><input id="l-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="11 2345-6789" required value="' + esc(loginPhone) + '"></div>' : '') +
+      '<div class="fld"><label for="l-email">Mail</label><input id="l-email" type="email" autocomplete="email" required value="' + esc(loginEmail) + '"></div>' +
+      (!reset ? '<div class="fld"><label for="l-pass">Contraseña' + (signup ? ' (mínimo 6 caracteres)' : '') + '</label><input id="l-pass" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '" required value="' + esc(loginPass) + '"></div>' : '') +
+      '<button class="btn btn-main" type="submit"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Un momento…' : signup ? 'Crear mi cuenta' : reset ? 'Mandarme el link' : 'Ingresar') + '</button>' +
+      '</form>' +
+      (loginMsg ? '<p class="login-msg">' + esc(loginMsg) + '</p>' : '') +
+      '<div class="login-links">' +
+      (loginMode !== 'login' ? '<button type="button" class="linkbtn" data-act="mode" data-mode="login">Ya tengo cuenta: ingresar</button>'
+        : '<button type="button" class="linkbtn" data-act="mode" data-mode="signup">No tengo cuenta: crearla</button><button type="button" class="linkbtn" data-act="mode" data-mode="reset">Olvidé mi contraseña</button>') +
+      '</div>' +
+      (reset ? '' : '<div class="login-sep"><span>o</span></div><button class="btn btn-line" type="button" data-act="login">' + gIcon() + 'Seguir con Google</button>');
+    var perks = '<div class="login-perks"><span class="eyebrow">Tu cuenta</span><h2>Seguí tus pedidos sin preguntar</h2><ul class="rules">' +
+      ['Mirá en qué estado está cada pedido: recibido, confirmado, listo o entregado.', 'Repetí un pedido anterior con un toque.', 'Tus datos quedan cargados: pedís más rápido.', 'Vendedores: entran a su panel con link, QR, promos y comisiones.'].map(function (x) { return '<li>' + ic('check', 18) + '<span>' + x + '</span></li>'; }).join('') +
+      '</ul>' + (refName ? '<div class="ref-chip">' + ic('users', 18) + '<span>Te atiende <b>' + esc(refName) + '</b>: queda guardado en tu cuenta.</span></div>' : '') + '</div>';
+    return '<div class="wrap login-wrap"><div class="panel login-card"><h1 class="h2">' + title + '</h1><p class="login-sub">' + sub + '</p>' + form + '</div>' + perks + '</div>';
   }
+  function gIcon() {
+    return '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
+  }
+  function verifyBox() {
+    return '<div class="verify-box"><p><b>¿Sos vendedor o del equipo?</b> Verificá tu mail para entrar a tu panel: te mandamos un link a <b>' + esc(user.email) + '</b> (revisá también correo no deseado).</p>' +
+      '<div class="ctas"><button class="btn btn-dark btn-sm" type="button" data-act="verified">Ya verifiqué</button><button class="btn btn-line btn-sm" type="button" data-act="resend">Reenviar mail</button></div></div>';
+  }
+  /* ================= cuenta del cliente ================= */
+  function isClient() { return role === 'client'; }
+  function loadCustomer() {
+    if (!fb || !user) return;
+    var uid = user.uid;
+    fb.db.collection('customers').doc(uid).get().then(function (d) {
+      if (!user || user.uid !== uid) return;
+      if (d.exists) { customer = d.data(); pendingProfile = null; }
+      else {
+        customer = { name: (pendingProfile && pendingProfile.name) || user.displayName || buyer.name || '', phone: (pendingProfile && pendingProfile.phone) || digits(buyer.phone), barrio: buyer.barrio || '', email: String(user.email || '').toLowerCase() };
+        var r = refName ? refCode : '';
+        if (r) customer.ref = r;
+        if (customer.name && digits(customer.phone).length >= 8) saveCustomerDoc(customer, true);
+      }
+      applyCustomer(); render(true);
+    }).catch(function () { customer = { error: true }; render(true); });
+  }
+  function saveCustomerDoc(c, isNew) {
+    var d = { name: String(c.name || '').slice(0, 80), phone: digits(c.phone).slice(0, 15), barrio: String(c.barrio || '').slice(0, 80), address: String(c.address || '').slice(0, 160), zone: String(c.zone || '').slice(0, 60), email: String((user && user.email) || '').toLowerCase().slice(0, 100), updatedAt: window.firebase.firestore.FieldValue.serverTimestamp() };
+    if (c.ref) d.ref = cleanCode(c.ref);
+    if (isNew) d.createdAt = window.firebase.firestore.FieldValue.serverTimestamp();
+    return fb.db.collection('customers').doc(user.uid).set(d, { merge: true }).then(function () { pendingProfile = null; });
+  }
+  // Los datos de la cuenta completan el carrito para pedir más rápido
+  function applyCustomer() {
+    if (!customer || customer.error) return;
+    ['name', 'barrio', 'address', 'zone'].forEach(function (k) { if (customer[k]) buyer[k] = customer[k]; });
+    if (customer.phone) buyer.phone = fmtPhone(customer.phone);
+    if (customer.zone && shipOn() && zoneByName(customer.zone)) buyer.mode = 'envio';
+    if (customer.ref && !refName) {
+      buyer.ref = customer.ref;
+      fb.db.collection('codes').doc(customer.ref).get().then(function (d) {
+        if (d.exists && d.data().active !== false) { refCode = customer.ref; refName = d.data().name || customer.ref; render(true); }
+      }).catch(function () {});
+    }
+    persistCart();
+  }
+  function loadMyOrders() {
+    if (!fb || !user) return;
+    var uid = user.uid;
+    fb.db.collection('orders').where('uid', '==', uid).limit(100).get().then(function (snap) {
+      if (!user || user.uid !== uid) return;
+      myOrders = snap.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }).sort(function (a, b) { var da = oDate(a), db = oDate(b); return (db ? db.getTime() : 0) - (da ? da.getTime() : 0); });
+      render(true);
+    }).catch(function () { myOrders = { error: true }; render(true); });
+  }
+  function saveProfile() {
+    var c = custForm; if (!c) return;
+    if (String(c.name || '').trim().length < 2) { setToast('Escribí tu nombre.', true); return; }
+    if (digits(c.phone).length < 8) { setToast('Escribí tu WhatsApp con código de área.', true); return; }
+    busy = true; render(true);
+    var isNew = !customer || !customer.createdAt;
+    var next = Object.assign({}, customer || {}, { name: c.name.trim(), phone: digits(c.phone), barrio: (c.barrio || '').trim(), address: (c.address || '').trim(), zone: c.zone || '' });
+    saveCustomerDoc(next, isNew).then(function () {
+      busy = false; customer = next; if (isNew) customer.createdAt = true; custForm = null; applyCustomer(); setToast('Tus datos quedaron guardados.');
+    }).catch(function () { busy = false; setToast('No se pudieron guardar tus datos. Probá de nuevo.'); });
+  }
+  function repeatOrder(o) {
+    var added = 0, missing = 0;
+    (o.items || []).forEach(function (i) {
+      var p = prodById(i.id);
+      if (p && p.stock !== 'out') { cart[p.id] = (cart[p.id] || 0) + (Number(i.q) || 1); added++; } else missing++;
+    });
+    lastOrder = null; try { sessionStorage.removeItem('galpon-last-order'); } catch (e) {}
+    persistCart();
+    if (!added) { setToast('Esos productos ya no están disponibles. Mirá el catálogo.'); return; }
+    cartOpen = true; render(true);
+    if (missing) showToast(missing + ' producto' + (missing > 1 ? 's' : '') + ' ya no está' + (missing > 1 ? 'n' : '') + ' disponible' + (missing > 1 ? 's' : '') + '. Sumamos el resto.');
+  }
+  var CSTEPS = ['nuevo', 'confirmado', 'listo', 'entregado'];
+  function cStatusName(o, st) {
+    var envio = o.delivery && o.delivery.mode === 'envio';
+    return { nuevo: 'Recibido', confirmado: 'Confirmado', listo: envio ? 'Listo para enviar' : 'Listo para retirar', entregado: 'Entregado', cancelado: 'Cancelado' }[st] || st;
+  }
+  function clientOrderCard(o) {
+    var dt = oDate(o), idx = CSTEPS.indexOf(o.status), canc = o.status === 'cancelado';
+    var items = o.items || [];
+    var shown = items.slice(0, 4).map(function (i) { return '<li><span class="num">' + i.q + ' ×</span> ' + esc(i.name) + '<span class="num">' + money(i.q * (Number(i.price) || 0)) + '</span></li>'; }).join('') +
+      (items.length > 4 ? '<li class="more">y ' + (items.length - 4) + ' producto' + (items.length - 4 > 1 ? 's' : '') + ' más</li>' : '');
+    var del = o.delivery && o.delivery.mode === 'envio' ? 'Envío a ' + esc(o.delivery.zone || '') + (o.delivery.eta ? ' · ' + esc(o.delivery.eta) : '') : 'Retiro en el depósito';
+    return '<article class="corder' + (canc ? ' canc' : '') + '">' +
+      '<div class="corder-top"><div><b>Pedido #' + esc(o.code || o.id.slice(0, 5).toUpperCase()) + '</b><small>' + (dt ? dt.toLocaleDateString('es-AR', { day: 'numeric', month: 'long' }) : 'Recién enviado') + ' · ' + del + '</small></div>' +
+      '<span class="vst st-' + esc(o.status) + '">' + esc(cStatusName(o, o.status)) + '</span></div>' +
+      (canc ? '<p class="hint">Este pedido se canceló. Si tenés dudas, escribinos.</p>'
+        : '<ol class="steps" aria-label="Estado del pedido">' + CSTEPS.map(function (st, i) { return '<li class="' + (i < idx ? 'done' : i === idx ? 'now' : '') + '"><span class="dot">' + (i <= idx ? ic('check', 14) : '') + '</span><small>' + esc(cStatusName(o, st)) + '</small></li>'; }).join('') + '</ol>') +
+      '<ul class="corder-items">' + shown + '</ul>' +
+      '<div class="corder-foot"><div class="num"><small>Total</small><b>' + money(o.grand != null ? o.grand : o.total) + '</b></div><div class="ctas">' +
+      '<button class="btn btn-main btn-sm" type="button" data-act="repeat-order" data-id="' + esc(o.id) + '">' + ic('repeat', 18) + 'Repetir pedido</button>' +
+      '<a class="btn btn-line btn-sm" href="' + esc(waLink('Hola ' + cfg.brand.name + '! Te consulto por mi pedido #' + (o.code || '') + '.')) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Consultar</a>' +
+      '</div></div></article>';
+  }
+  function profileForm() {
+    if (!custForm) custForm = { name: customer.name || '', phone: customer.phone ? fmtPhone(customer.phone) : '', barrio: customer.barrio || '', address: customer.address || '', zone: customer.zone || '' };
+    var c = custForm;
+    var fl = function (label, k, opt) {
+      opt = opt || {};
+      return '<div class="fld' + (opt.wide ? ' wide' : '') + '"><label for="cf-' + k + '">' + label + '</label><input id="cf-' + k + '" data-cf="' + k + '" value="' + esc(c[k]) + '"' + (opt.type ? ' type="' + opt.type + '" inputmode="tel"' : '') + (opt.ph ? ' placeholder="' + esc(opt.ph) + '"' : '') + (opt.ac ? ' autocomplete="' + opt.ac + '"' : '') + '></div>';
+    };
+    return '<div class="form-grid">' + fl('Nombre', 'name', { ac: 'name' }) + fl('WhatsApp', 'phone', { type: 'tel', ph: '11 2345-6789', ac: 'tel' }) + fl('Barrio o feria', 'barrio', { wide: true, ph: 'Ej. Feria de Laferrere' }) +
+      (shipOn() ? '<div class="fld"><label for="cf-zone">Zona de envío</label><select id="cf-zone" data-cf="zone"><option value="">Retiro en el depósito</option>' + cfg.shipping.zones.map(function (z) { return '<option' + (z.name === c.zone ? ' selected' : '') + '>' + esc(z.name) + '</option>'; }).join('') + '</select></div>' + fl('Dirección de entrega', 'address', { ph: 'Calle, número, entre calles', ac: 'street-address' }) : '') +
+      '</div><div class="ctas" style="margin-top:14px"><button class="btn btn-dark btn-sm" type="button" data-act="save-profile"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Guardando…' : 'Guardar mis datos') + '</button></div>';
+  }
+  function accountView() {
+    if (!authReady || (user && !role)) return '<div class="wrap admin"><div class="panel" style="max-width:460px"><p>Cargando…</p></div></div>';
+    if (!user) return loginPanel();
+    var first = String((customer && customer.name) || user.displayName || '').split(' ')[0];
+    var head = '<div class="admin-top"><div><span class="eyebrow">Mi cuenta</span><h1 class="h2" style="margin-top:6px">Hola' + (first ? ', ' + esc(first) : '') + '</h1>' +
+      '<p style="color:var(--ink-3);font-size:14px;margin-top:6px">' + esc(user.email) + ' · <button type="button" class="linkbtn" data-act="logout">Salir</button></p></div>' +
+      '<a class="btn btn-main btn-sm" href="#catalogo" data-go="catalogo">' + ic('bag', 18) + 'Hacer un pedido</a></div>';
+    if (!customer) return '<div class="wrap acct">' + head + '<div class="panel"><p>Cargando tus datos…</p></div></div>';
+    var incomplete = !customer.error && (!customer.name || digits(customer.phone).length < 8);
+    var ordersHtml;
+    if (myOrders === null) ordersHtml = '<p class="hint">Cargando tus pedidos…</p>';
+    else if (myOrders.error) ordersHtml = '<p class="hint">No pudimos cargar tus pedidos. Recargá la página.</p>';
+    else if (!myOrders.length) ordersHtml = '<div class="empty">Todavía no hiciste pedidos con esta cuenta.<br>Los que hagas estando dentro van a aparecer acá, con su estado.<div class="ctas" style="justify-content:center;margin-top:14px"><a class="btn btn-main btn-sm" href="#catalogo" data-go="catalogo">Ver el catálogo</a></div></div>';
+    else ordersHtml = '<div class="corders">' + myOrders.map(clientOrderCard).join('') + '</div>';
+    var open = myOrders && !myOrders.error ? myOrders.filter(function (o) { return o.status !== 'entregado' && o.status !== 'cancelado'; }).length : 0;
+    return '<div class="wrap acct">' + head +
+      (user.emailVerified ? '' : verifyBox()) +
+      (incomplete ? '<div class="panel panel-hl"><h2>Completá tus datos</h2><p>Así cada pedido sale con tu nombre y WhatsApp, y te avisamos cuando esté listo.</p>' + profileForm() + '</div>' : '') +
+      '<div class="acct-grid"><div class="panel"><h2>Mis pedidos' + (open ? ' <span class="count num">' + open + ' en curso</span>' : '') + '</h2>' + ordersHtml + '</div>' +
+      '<aside class="acct-side">' +
+      (refName ? '<div class="panel"><h2>Te atiende</h2><div class="ref-chip">' + ic('users', 18) + '<span><b>' + esc(refName) + '</b> · código ' + esc(refCode) + '</span></div><p class="hint" style="margin-top:8px">Tus pedidos le quedan asignados.</p></div>' : '') +
+      '<div class="panel canal-card"><h2>' + ic('megaphone', 22) + 'Ofertas por WhatsApp</h2><p>Sumate a nuestro canal de difusión y recibí el catálogo y las ofertas de la semana.</p><a class="btn btn-main btn-sm" href="' + esc(canalTarget(refName ? refCode : '', refName)) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Sumarme al canal</a></div>' +
+      (!incomplete ? '<div class="panel"><h2>Mis datos</h2>' + profileForm() + '</div>' : '') +
+      '</aside></div></div>';
+  }
+
   var AUTH_ERR = {
     'auth/invalid-email': 'Ese mail no es válido.',
     'auth/missing-password': 'Escribí tu contraseña.',
     'auth/weak-password': 'La contraseña tiene que tener al menos 6 caracteres.',
-    'auth/email-already-in-use': 'Ese mail ya tiene acceso. Ingresá, o usá “Olvidé mi contraseña”.',
+    'auth/email-already-in-use': 'Ese mail ya tiene cuenta. Ingresá, o usá “Olvidé mi contraseña”.',
     'auth/invalid-credential': 'Mail o contraseña incorrectos.',
     'auth/wrong-password': 'Mail o contraseña incorrectos.',
-    'auth/user-not-found': 'No hay un acceso con ese mail. Tocá “Es mi primera vez”.',
+    'auth/user-not-found': 'No hay una cuenta con ese mail. Tocá “No tengo cuenta: crearla”.',
     'auth/too-many-requests': 'Demasiados intentos. Esperá unos minutos.',
     'auth/operation-not-allowed': 'Este método de ingreso no está activado en Firebase (Authentication → Sign-in method).',
     'auth/unauthorized-domain': 'Falta agregar este dominio en Firebase → Authentication → Settings → Authorized domains.',
@@ -772,15 +936,20 @@
     if (loginMode === 'reset') {
       fb.auth.sendPasswordResetEmail(em).then(function () { loginMode = 'login'; done('Listo: revisá tu mail (y correo no deseado) para crear la contraseña nueva.'); }).catch(function (e) { done(authError(e)); });
     } else if (loginMode === 'signup') {
+      var nm = String(loginName || '').trim(), phn = digits(loginPhone);
+      if (nm.length < 2) { done('Escribí tu nombre.'); return; }
+      if (phn.length < 8) { done('Escribí tu WhatsApp con código de área (ej. 11 2345-6789).'); return; }
+      pendingProfile = { name: nm.slice(0, 80), phone: phn.slice(0, 15) };
       fb.auth.createUserWithEmailAndPassword(em, pw).then(function (cred) {
-        return cred.user.sendEmailVerification();
-      }).then(function () { done(''); }).catch(function (e) { done(authError(e)); });
+        cred.user.sendEmailVerification().catch(function () {});
+        return cred.user.updateProfile({ displayName: nm.slice(0, 80) }).catch(function () {});
+      }).then(function () { loginPass = ''; done(''); }).catch(function (e) { pendingProfile = null; done(authError(e)); });
     } else {
-      fb.auth.signInWithEmailAndPassword(em, pw).then(function () { done(''); }).catch(function (e) { done(authError(e)); });
+      fb.auth.signInWithEmailAndPassword(em, pw).then(function () { loginPass = ''; done(''); }).catch(function (e) { done(authError(e)); });
     }
   }
   function tabs() {
-    var list = [['pedidos', 'Pedidos'], ['clientes', 'Clientes'], ['productos', 'Productos']];
+    var list = [['pedidos', 'Pedidos'], ['clientes', 'Clientes'], ['productos', 'Productos'], ['promos', 'Promos y QR']];
     if (isAdmin()) {
       var nl = leads ? leads.filter(function (l) { return l.status === 'nuevo'; }).length : 0;
       list.splice(2, 0, ['vendedores', 'Vendedores'], ['contactos', 'Contactos' + (nl ? ' (' + nl + ')' : '')]);
@@ -797,6 +966,7 @@
     var seedBox = (isAdmin() && (needSeed.cfg || needSeed.products))
       ? '<div class="admin-note">' + ic('info', 20) + '<div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start"><span><b>Primer uso:</b> los datos y productos de ejemplo todavía no están guardados en Firebase.</span><button class="btn btn-main btn-sm" type="button" data-act="seed"' + (busy ? ' disabled' : '') + '>Cargar datos iniciales</button></div></div>' : '';
     var body = adminTab === 'productos' ? productsAdmin()
+      : adminTab === 'promos' ? promosAdmin()
       : adminTab === 'clientes' ? resellersAdmin()
       : adminTab === 'vendedores' && isAdmin() ? sellersAdmin()
       : adminTab === 'negocio' && isAdmin() ? businessAdmin()
@@ -1073,7 +1243,8 @@
       f('Nombre de la marca', 'brand.name') +
       f('Frase de la marca', 'brand.tagline') +
       f('WhatsApp de pedidos', 'contact.whatsapp', { ph: '5491123456789', help: 'Con 549 + código de área, sin 0 ni 15. Ej: 5491123456789' }) +
-      f('WhatsApp como se muestra', 'contact.whatsappDisplay', { ph: '11 2345-6789' }) +
+      f('WhatsApp como se muestra', 'contact.whatsappDisplay', { ph: '11 2345-6789', help: 'Es el número que sale en banners, carteles y la web.' }) +
+      f('Link del canal de WhatsApp (opcional)', 'contact.channel', { wide: true, ph: 'https://whatsapp.com/channel/…', help: 'Si lo cargás, los QR llevan directo al canal. Si no, abren WhatsApp con un mensaje para sumarse a la lista de difusión.' }) +
       f('Instagram', 'contact.instagram', { ph: 'elgalpon.ok' }) +
       f('Mail de contacto (opcional)', 'contact.email', { ph: 'hola@elgalpon.com.ar' }) +
       f('Dirección del depósito', 'contact.address', { ph: 'Av. Ejemplo 1234' }) +
@@ -1271,6 +1442,7 @@
   function sellersAdmin() {
     if (!sellers || !orders) return '<div class="panel"><p>Cargando vendedores…</p></div>';
     if (payouts === null) loadPayouts();
+    if (statsMap === null) loadStats();
     var list = sellers.slice().map(function (x) { return { s: x, st: sellerStats(x.id) }; })
       .sort(function (a, b) { return (b.s.active !== false) - (a.s.active !== false) || b.st.pending - a.st.pending || b.st.sales30 - a.st.sales30; });
     var totPending = list.reduce(function (m, x) { return m + x.st.pending; }, 0);
@@ -1285,12 +1457,13 @@
         var s = x.s, st = x.st, code = s.id, off = s.active === false;
         var link = sellerLink(code), mine = (payouts || []).filter(function (p) { return p.code === code; });
         var team = sellers.filter(function (y) { return y.recruitedBy === code; });
-        var wa = waTo(s.phone, 'Hola ' + String(s.name).split(' ')[0] + '! Este es tu link para pasarle a los feriantes: ' + link + ' Todo lo que compren por ahí queda a tu nombre.');
+        var wa = waTo(s.phone, 'Hola ' + String(s.name).split(' ')[0] + '! Este es tu link para pasarle a los feriantes: ' + link + ' y este para que se sumen a nuestras ofertas por WhatsApp: ' + canalLink(code) + ' Todo lo que compren por ahí queda a tu nombre. Tu panel, con promos y tu QR: ' + location.origin + '/#cuenta');
         return '<div class="scard' + (off ? ' off' : '') + '">' +
           '<div class="rcard-top"><div><b>' + esc(s.name) + ' <span class="code-chip">' + esc(code) + '</span></b><span>' + esc(s.phone || '') + (s.zone ? ' · ' + esc(s.zone) : '') + '</span>' +
           (s.recruitedBy ? '<span>Lo sumó ' + esc(sellerName(s.recruitedBy)) + (overrideFor(code) ? ' · extra vigente' : '') + '</span>' : '') + '</div>' +
           '<span class="rstate ' + (off ? 'inactivo' : 'activo') + '">' + (off ? 'Pausado' : 'Activo') + '</span></div>' +
           '<div class="rnums num"><div><small>Clientes</small><b>' + st.clients + '</b></div><div><small>Vendido 30 días</small><b>' + money(st.sales30) + '</b></div><div><small>A cobrar</small><b>' + money(st.pending) + '</b></div><div><small>Cobrado</small><b>' + money(st.paid) + '</b></div></div>' +
+          '<p class="hint num">QR del canal: <b>' + scans(code) + '</b> escaneos</p>' +
           (team.length ? '<p class="hint">Sumó ' + team.length + ' vendedor' + (team.length > 1 ? 'es' : '') + ': ' + team.map(function (y) { return esc(y.name); }).join(', ') + '</p>' : '') +
           '<div class="linkrow"><input readonly value="' + esc(link) + '" aria-label="Link de ' + esc(s.name) + '"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(link) + '">Copiar link</button></div>' +
           '<div class="sactions">' +
@@ -1304,6 +1477,28 @@
           (mine.length ? '<details class="payouts"><summary>Liquidaciones (' + mine.length + ')</summary>' + mine.map(function (p) { return payoutRow(p, s); }).join('') + '</details>' : '') +
           '</div>';
       }).join('') + '</div>' : (sellerForm ? '' : '<div class="panel"><div class="empty">Todavía no hay vendedores. Dalos de alta acá o desde Contactos, cuando alguien completa el formulario “Quiero vender”.</div></div>'));
+  }
+  function scans(code) { var st = statsMap && statsMap['qr-' + (code || 'general')]; return st ? Number(st.views) || 0 : 0; }
+  function promosAdmin() {
+    if (statsMap === null) loadStats();
+    var gl = canalLink('');
+    var list = (sellers || []).filter(function (x) { return x.active !== false; });
+    return '<div class="panel"><h2>Promos y QR</h2>' +
+      '<p>Armá la imagen para mandar por la lista de difusión, subir a estados o imprimir. En todas figura <b>el WhatsApp del negocio' + (ourWa() ? ' (' + esc(ourWa()) + ')' : '') + '</b>.</p>' +
+      '<div class="ctas" style="margin-top:14px"><button class="btn btn-main btn-sm" type="button" data-act="poster" data-type="promo">' + ic('share', 18) + 'Armar promo con productos</button>' +
+      '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="qr">' + ic('qr', 18) + 'Cartel con QR</button></div></div>' +
+      '<div class="panel"><h2>' + ic('megaphone', 22) + ' QR del canal de ofertas</h2>' +
+      '<p>' + (hasChannel() ? 'Al escanearlo se abre tu canal de WhatsApp.' : 'Al escanearlo se abre WhatsApp con un mensaje listo para pedir que lo sumes a la lista de difusión (“Vengo de parte de…” si es de un vendedor).') +
+      ' El QR apunta a la web y de ahí salta al canal: si mañana cambiás el canal, los carteles impresos siguen andando.</p>' +
+      (!hasChannel() && isAdmin() ? '<p class="hint">¿Tenés un canal de WhatsApp? Pegá su link en <b>Datos y ajustes → Link del canal de WhatsApp</b>.</p>' : '') +
+      '<div class="linkrow"><input readonly value="' + esc(gl) + '" aria-label="Link general del canal"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(gl) + '">Copiar</button></div>' +
+      '<p class="hint num">Escaneos del QR general: <b>' + scans('') + '</b></p></div>' +
+      '<div class="panel"><h2>Por vendedor</h2><p>Cada vendedor tiene su propio QR: los clientes que entran por ahí quedan a su nombre.</p>' +
+      (list.length ? '<div class="prow-list">' + list.map(function (x) {
+        return '<div class="promo-row"><div><b>' + esc(x.name) + '</b> <span class="code-chip">' + esc(x.id) + '</span><small class="num">' + scans(x.id) + ' escaneos del QR</small></div>' +
+          '<div class="ctas"><button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="promo" data-code="' + esc(x.id) + '">Promo</button><button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="qr" data-code="' + esc(x.id) + '">Cartel</button></div></div>';
+      }).join('') + '</div>' : '<div class="empty">Todavía no hay vendedores activos.' + (isAdmin() ? ' Dalos de alta en la pestaña Vendedores.' : '') + '</div>') +
+      '</div>';
   }
   function payoutRow(p, s) {
     var d = p.createdAt && p.createdAt.toDate ? p.createdAt.toDate() : null;
@@ -1336,12 +1531,15 @@
       if (view === 'admin') render(true);
     }).catch(function () {});
   }
+  var statsLoading = false;
   function loadStats() {
-    if (!fb || !isStaff()) return;
+    if (!fb || !isStaff() || statsLoading) return;
+    statsLoading = true;
     fb.db.collection('stats').get().then(function (snap) {
+      statsLoading = false;
       statsMap = {}; snap.docs.forEach(function (d) { statsMap[d.id] = d.data(); });
-      if (view === 'admin' && adminTab === 'productos') render(true);
-    }).catch(function () { statsMap = {}; });
+      if (view === 'admin' && ['productos', 'promos', 'vendedores'].indexOf(adminTab) !== -1) render(true);
+    }).catch(function () { statsLoading = false; statsMap = {}; });
   }
   function saveSeller() {
     var f = sellerForm; if (!f || busy) return;
@@ -1447,7 +1645,8 @@
     var clist = Object.keys(clients).map(function (k) { return clients[k]; }).sort(function (a, b) { return b.last - a.last; });
     var activeClients = clist.filter(function (c) { return now - c.last <= monthsMs(comm().clientMonths); }).length;
     var link = sellerLink(sellerCode), linkV = sellerLink(sellerCode, true);
-    var shareFeriante = 'Hola! Te paso el catálogo de ' + cfg.brand.name + ' con precios de depósito para tu puesto: ' + link + ' Pedís por ahí y lo retirás o te lo enviamos.';
+    var canal = canalLink(sellerCode);
+    var shareFeriante = 'Hola! Te paso el catálogo de ' + cfg.brand.name + ' con precios de depósito para tu puesto: ' + link + ' Pedís por ahí y lo retirás o te lo enviamos. Y sumate a las ofertas de la semana por WhatsApp: ' + canal;
     var shareVend = '¿Querés ganar comisión vendiendo a feriantes? Sumate como vendedor de ' + cfg.brand.name + ': ' + linkV;
     var ST = { nuevo: 'Nuevo', confirmado: 'Confirmado', listo: 'Listo', entregado: 'Entregado', cancelado: 'Cancelado' };
     return '<div class="wrap admin">' + head(d.me.name) +
@@ -1458,10 +1657,11 @@
       tile('Ventas este mes', money(monthSales), 'tu comisión: ' + money(monthCom)) +
       tile('Clientes activos', String(activeClients), 'compraron en los últimos ' + comm().clientMonths + ' meses') +
       '</div></div>' +
-      '<div class="panel"><h2>Tu link</h2><p>Pasáselo a los feriantes. Todo lo que compren por ahí, o con tu código <b>' + esc(sellerCode) + '</b>, queda a tu nombre.</p>' +
-      '<div class="share-grid"><div class="qr-box"><div id="qr" data-text="' + esc(link) + '" aria-label="Código QR de tu link"></div><small class="hint">Mostralo en el celular o imprimilo para tu puesto.</small></div>' +
+      '<div class="panel"><h2>Tu QR y tus links</h2><p>Los feriantes que escanean tu QR se suman a nuestro canal de ofertas por WhatsApp y quedan a tu nombre. Lo mismo si compran por tu link o con tu código <b>' + esc(sellerCode) + '</b>.</p>' +
+      '<div class="share-grid"><div class="qr-box"><div id="qr" data-text="' + esc(canal) + '" aria-label="Código QR del canal de ofertas"></div><small class="hint">Mostralo desde el celu: lo escanean y quedan sumados.</small></div>' +
       '<div style="display:flex;flex-direction:column;gap:10px;min-width:0">' +
-      '<div class="linkrow"><input readonly value="' + esc(link) + '" aria-label="Tu link"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(link) + '">Copiar</button></div>' +
+      '<label class="mini-label" for="lk-cat">Catálogo</label><div class="linkrow"><input id="lk-cat" readonly value="' + esc(link) + '"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(link) + '">Copiar</button></div>' +
+      '<label class="mini-label" for="lk-canal">Canal de ofertas</label><div class="linkrow"><input id="lk-canal" readonly value="' + esc(canal) + '"><button class="btn btn-line btn-sm" type="button" data-act="copy" data-text="' + esc(canal) + '">Copiar</button></div>' +
       '<a class="btn btn-main btn-sm" href="https://wa.me/?text=' + encodeURIComponent(shareFeriante) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Mandar el catálogo a un feriante</a>' +
       '<button class="btn btn-dark btn-sm" type="button" data-act="poster" data-type="promo" data-code="' + esc(sellerCode) + '">' + ic('share', 18) + 'Promo con productos para mandar</button>' +
       '<button class="btn btn-line btn-sm" type="button" data-act="poster" data-type="qr" data-code="' + esc(sellerCode) + '">' + ic('camera', 18) + 'Cartel con tu QR para el puesto</button>' +
@@ -1573,7 +1773,7 @@
   function makePoster(pz) {
     var story = pz.kind === 'story';
     var W = story ? 1080 : 1654, H = story ? 1920 : 2339, s = W / 1080;
-    var link = sellerLink(pz.code);
+    var link = qrTarget(pz);
     var D = '"Bricolage Grotesque", Figtree, system-ui, sans-serif', B = 'Figtree, system-ui, sans-serif';
     var fontsReady = document.fonts ? Promise.all([
       document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('700 40px Figtree'), document.fonts.load('500 40px Figtree')
@@ -1624,8 +1824,8 @@
         });
         var bottomBand = 150 * t;
         var cardX = M, cardW = W - 2 * M, cardY = y + 16 * t, cardH = H - bottomBand - 56 * t - cardY;
-        var phone = pz.showPhone && pz.phone;
-        var infoH = (phone ? 240 : 180) * t;
+        var wa = ourWa();
+        var infoH = ((pz.code ? 180 : 40) + (wa ? 64 : 0)) * t;
         var qrSize = Math.min(cardW - 120 * t, cardH - 130 * t - infoH);
         if (!qrImg) return qrSize;
         // la tarjeta se ajusta al contenido y queda centrada en el espacio libre
@@ -1636,28 +1836,32 @@
         g.strokeStyle = '#F0DCC8'; g.lineWidth = 3 * t; rrect(g, cardX, cardY, cardW, cardH, 40 * t); g.stroke();
         g.textAlign = 'center';
         g.fillStyle = NAVY; g.font = '800 ' + Math.round(52 * t) + 'px ' + D;
-        g.fillText('Escaneá y mirá el catálogo', W / 2, cardY + 82 * t);
+        g.fillText(pz.dest === 'catalogo' ? 'Escaneá y mirá el catálogo' : 'Escaneá y recibí las ofertas', W / 2, cardY + 82 * t);
         var qy = cardY + 116 * t;
         g.imageSmoothingEnabled = false;
         g.drawImage(qrImg, (W - qrSize) / 2, qy, qrSize, qrSize);
         g.imageSmoothingEnabled = true;
-        var iy = qy + qrSize + 66 * t;
-        var pre = 'Te atiende ', nm = String(pz.name || '').split(' ')[0];
-        g.font = '800 ' + Math.round(46 * t) + 'px ' + D; var wName = g.measureText(nm).width;
-        g.font = '500 ' + Math.round(40 * t) + 'px ' + B; var wPre = g.measureText(pre).width;
-        var st = W / 2 - (wPre + wName) / 2;
-        g.textAlign = 'left'; g.fillStyle = '#4A5380'; g.fillText(pre, st, iy);
-        g.fillStyle = NAVY; g.font = '800 ' + Math.round(46 * t) + 'px ' + D; g.fillText(nm, st + wPre, iy);
+        var iy = qy + qrSize + 66 * t, nextY = qy + qrSize + 20 * t;
         g.textAlign = 'center';
-        var chip = 'Código ' + pz.code;
-        g.font = '800 ' + Math.round(34 * t) + 'px ' + B;
-        var cw = g.measureText(chip).width + 52 * t, chy = iy + 26 * t;
-        g.fillStyle = NAVY; rrect(g, W / 2 - cw / 2, chy, cw, 60 * t, 30 * t); g.fill();
-        g.fillStyle = '#FFFFFF'; g.fillText(chip, W / 2, chy + 42 * t);
-        if (phone) { g.fillStyle = '#4A5380'; g.font = '600 ' + Math.round(36 * t) + 'px ' + B; g.fillText('WhatsApp ' + fmtPhone(pz.phone), W / 2, chy + 116 * t); }
+        if (pz.code) {
+          var pre = 'Te atiende ', nm = String(pz.name || '').split(' ')[0];
+          g.font = '800 ' + Math.round(46 * t) + 'px ' + D; var wName = g.measureText(nm).width;
+          g.font = '500 ' + Math.round(40 * t) + 'px ' + B; var wPre = g.measureText(pre).width;
+          var st = W / 2 - (wPre + wName) / 2;
+          g.textAlign = 'left'; g.fillStyle = '#4A5380'; g.fillText(pre, st, iy);
+          g.fillStyle = NAVY; g.font = '800 ' + Math.round(46 * t) + 'px ' + D; g.fillText(nm, st + wPre, iy);
+          g.textAlign = 'center';
+          var chip = 'Código ' + pz.code;
+          g.font = '800 ' + Math.round(34 * t) + 'px ' + B;
+          var cw = g.measureText(chip).width + 52 * t, chy = iy + 26 * t;
+          g.fillStyle = NAVY; rrect(g, W / 2 - cw / 2, chy, cw, 60 * t, 30 * t); g.fill();
+          g.fillStyle = '#FFFFFF'; g.fillText(chip, W / 2, chy + 42 * t);
+          nextY = chy + 60 * t;
+        }
+        if (wa) { g.fillStyle = GREEN; g.font = '800 ' + Math.round(38 * t) + 'px ' + B; g.fillText('WhatsApp ' + wa, W / 2, nextY + 54 * t); }
         g.fillStyle = NAVY; g.fillRect(0, H - bottomBand, W, bottomBand);
         g.fillStyle = '#FFFFFF'; g.font = '700 ' + Math.round(36 * t) + 'px ' + B;
-        g.fillText(location.host.replace(/^www\./, '') + '/?v=' + pz.code, W / 2, H - bottomBand / 2 - 4 * t);
+        g.fillText(location.host.replace(/^www\./, '') + (pz.code ? '/?v=' + pz.code : ''), W / 2, H - bottomBand / 2 - 4 * t);
         g.fillStyle = '#C9CFE6'; g.font = '500 ' + Math.round(27 * t) + 'px ' + B;
         g.fillText('Sin cuota ni inscripción · ' + (cfg.brand.tagline || ''), W / 2, H - bottomBand / 2 + 38 * t);
         return qrSize;
@@ -1705,7 +1909,7 @@
     var NAVY = '#1E2A5A', ORANGE = '#FF6B1A', YELLOW = '#FFD23F', GREEN = '#15803D', CREAM = '#FFF8F0';
     var items = pz.sel.map(prodById).filter(Boolean).slice(0, 6);
     var fontsReady = document.fonts ? Promise.all([document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('700 40px Figtree'), document.fonts.load('600 40px Figtree')]).catch(function () {}) : Promise.resolve();
-    return Promise.all([pz.code ? loadQRLib() : Promise.resolve(), fontsReady, Promise.all(items.map(function (p) { return loadImgSafe(p.img); }))]).then(function (r) {
+    return Promise.all([loadQRLib(), fontsReady, Promise.all(items.map(function (p) { return loadImgSafe(p.img); }))]).then(function (r) {
       var imgs = r[2];
       var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
       var g = cv.getContext('2d');
@@ -1806,34 +2010,35 @@
       g.fillStyle = NAVY; g.fillRect(0, H - bottomH, W, bottomH);
       g.fillStyle = YELLOW; g.fillRect(0, H - bottomH, W, 10);
       var qs = bottomH - 70, qx = M, qy = H - bottomH + 40;
-      var tx = M;
-      if (pz.code) {
-        g.fillStyle = '#FFFFFF'; rrect(g, qx - 10, qy - 10, qs + 20, qs + 20, 16); g.fill();
-        var qr = qrCanvas(sellerLink(pz.code), 600);
-        g.imageSmoothingEnabled = false; g.drawImage(qr, qx, qy, qs, qs); g.imageSmoothingEnabled = true;
-        tx = qx + qs + 44;
+      g.fillStyle = '#FFFFFF'; rrect(g, qx - 10, qy - 10, qs + 20, qs + 20, 16); g.fill();
+      var qr = qrCanvas(qrTarget(pz), 600);
+      g.imageSmoothingEnabled = false; g.drawImage(qr, qx, qy, qs, qs); g.imageSmoothingEnabled = true;
+      var tx = qx + qs + 44, maxTW = W - tx - M, top0 = H - bottomH;
+      g.textAlign = 'left'; g.fillStyle = '#FFFFFF';
+      var l1 = pz.dest === 'catalogo' ? 'Escaneá y mirá el catálogo' : 'Escaneá y recibí las ofertas';
+      g.font = '800 ' + Math.round(fitFont(g, l1, '800', D, story ? 48 : 40, maxTW, 24)) + 'px ' + D;
+      g.fillText(l1, tx, top0 + (story ? 86 : 70));
+      var wa = ourWa();
+      if (wa) {
+        var wt = 'WhatsApp ' + wa;
+        g.fillStyle = YELLOW; g.font = '800 ' + Math.round(fitFont(g, wt, '800', B, story ? 40 : 34, maxTW, 22)) + 'px ' + B;
+        g.fillText(wt, tx, top0 + (story ? 140 : 116));
       }
-      var maxTW = W - tx - M;
-      g.textAlign = pz.code ? 'left' : 'center'; var cxT = pz.code ? tx : W / 2;
-      g.fillStyle = '#FFFFFF';
-      var l1 = pz.code ? 'Escaneá y pedí desde tu celu' : 'Pedí desde tu celu';
-      g.font = '800 ' + Math.round(fitFont(g, l1, '800', D, story ? 50 : 42, maxTW, 26)) + 'px ' + D;
-      g.fillText(l1, cxT, H - bottomH + (story ? 92 : 76));
-      var wa = pz.code ? (pz.showPhone && pz.phone ? 'WhatsApp ' + fmtPhone(pz.phone) : '') : (cfg.contact.whatsappDisplay || cfg.contact.whatsapp ? 'WhatsApp ' + (cfg.contact.whatsappDisplay || fmtPhone(cfg.contact.whatsapp)) : '');
       var site = location.host.replace(/^www\./, '') + (pz.code ? '/?v=' + pz.code : '');
-      g.fillStyle = '#C9CFE6'; g.font = '600 ' + Math.round(fitFont(g, site, '600', B, story ? 34 : 30, maxTW, 20)) + 'px ' + B;
-      g.fillText(site, cxT, H - bottomH + (story ? 148 : 122));
-      if (wa) { g.fillStyle = '#FFFFFF'; g.font = '700 ' + Math.round(story ? 36 : 30) + 'px ' + B; g.fillText(wa, cxT, H - bottomH + (story ? 200 : 166)); }
+      g.fillStyle = '#C9CFE6'; g.font = '600 ' + Math.round(fitFont(g, site, '600', B, story ? 30 : 26, maxTW, 18)) + 'px ' + B;
+      g.fillText(site, tx, top0 + (story ? 184 : 154));
       if (pz.code) {
         var chip = 'Código ' + pz.code + (pz.name ? ' · ' + String(pz.name).split(' ')[0] : '');
-        g.font = '800 ' + Math.round(story ? 30 : 26) + 'px ' + B;
-        var cwid = g.measureText(chip).width + 40, cyy = H - bottomH + (story ? 226 : 186);
-        if (cyy + 50 < H) { g.fillStyle = ORANGE; rrect(g, tx, cyy, cwid, story ? 52 : 44, 26); g.fill(); g.fillStyle = NAVY; g.fillText(chip, tx + 20, cyy + (story ? 36 : 31)); }
+        var chH = story ? 50 : 40;
+        g.font = '800 ' + Math.round(story ? 28 : 24) + 'px ' + B;
+        var cwid = Math.min(maxTW, g.measureText(chip).width + 40), cyy = top0 + (story ? 210 : 174);
+        g.fillStyle = ORANGE; rrect(g, tx, cyy, cwid, chH, chH / 2); g.fill(); g.fillStyle = NAVY; g.fillText(chip, tx + 20, cyy + chH * 0.68);
       }
       return cv.toDataURL('image/jpeg', 0.9);
     });
   }
 
+  function qrTarget(pz) { return pz.dest === 'catalogo' ? (pz.code ? sellerLink(pz.code) : location.origin + '/#catalogo') : canalLink(pz.code); }
   function openPoster(code, type) {
     var info = { name: '', phone: '' };
     if (code) {
@@ -1842,7 +2047,8 @@
       else return;
     }
     var d = promoDefaults();
-    poster = { code: code || '', name: info.name, phone: info.phone, type: code ? (type || 'qr') : 'promo', kind: code && type !== 'promo' ? 'a4' : 'story', showPhone: true, url: null,
+    type = type === 'qr' ? 'qr' : 'promo';
+    poster = { code: code || '', name: info.name, type: type, kind: type === 'qr' ? 'a4' : 'story', dest: 'canal', url: null,
       source: d.source, sel: d.sel, title: d.title, subtitle: d.subtitle };
     render(true); buildPoster();
   }
@@ -1871,10 +2077,11 @@
     var pool = promo ? promoPool(pz.source) : [];
     var extra = promo ? pz.sel.map(prodById).filter(function (p) { return p && pool.indexOf(p) === -1; }) : [];
     return '<div class="modal-wrap" data-act="close-poster" style="z-index:60"><div class="modal poster-modal" role="dialog" aria-modal="true" aria-label="' + (promo ? 'Promo con productos' : 'Cartel con QR') + '" data-stop="1">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:22px">' + (promo ? 'Promo con productos' : 'Cartel de ' + esc(first)) + '</h2><button class="x" type="button" data-act="close-poster" aria-label="Cerrar">' + ic('x') + '</button></div>' +
-      (pz.code ? '<div class="ptype" role="tablist">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="font-size:22px">' + (promo ? 'Promo con productos' : pz.code ? 'Cartel de ' + esc(first) : 'Cartel con QR') + '</h2><button class="x" type="button" data-act="close-poster" aria-label="Cerrar">' + ic('x') + '</button></div>' +
+      ('<div class="ptype" role="tablist">' +
         '<button type="button" role="tab" class="ptype-btn' + (promo ? ' on' : '') + '" aria-selected="' + promo + '" data-act="poster-type" data-type="promo"><b>Promo con productos</b><small>Para mandar y publicar</small></button>' +
-        '<button type="button" role="tab" class="ptype-btn' + (!promo ? ' on' : '') + '" aria-selected="' + !promo + '" data-act="poster-type" data-type="qr"><b>Cartel con QR</b><small>Para el puesto</small></button></div>' : '') +
+        '<button type="button" role="tab" class="ptype-btn' + (!promo ? ' on' : '') + '" aria-selected="' + !promo + '" data-act="poster-type" data-type="qr"><b>Cartel con QR</b><small>' + (pz.code ? 'Para el puesto' : 'Para imprimir y pegar') + '</small></button></div>') +
+      '<div class="pdest"><span>El QR lleva a</span><div class="ptabs">' + [['canal', 'Canal de ofertas (WhatsApp)'], ['catalogo', 'Catálogo web']].map(function (k) { return '<button type="button" class="chip' + (pz.dest === k[0] ? ' on' : '') + '" data-act="poster-dest" data-dest="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div></div>' +
       '<div class="ptabs">' + kinds.map(function (k) { return '<button type="button" class="chip' + (pz.kind === k[0] ? ' on' : '') + '" data-act="poster-kind" data-kind="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div>' +
       (promo ? '<div class="form-grid promo-form">' +
         '<div class="fld wide"><label for="pz-title">Título</label><input id="pz-title" data-pz="title" maxlength="40" value="' + esc(pz.title) + '"></div>' +
@@ -1886,11 +2093,11 @@
           var on = pz.sel.indexOf(p.id) !== -1, dis = !on && pz.sel.length >= 6;
           return '<label class="pick-item' + (on ? ' on' : '') + (dis ? ' dis' : '') + '"><input type="checkbox" data-pick="' + esc(p.id) + '"' + (on ? ' checked' : '') + (dis ? ' disabled' : '') + '><img src="' + esc(imgOf(p)) + '" alt=""><span><b>' + esc(p.name) + '</b><small class="num">' + money(priceOf(p)) + (onOffer(p) ? ' · oferta' : '') + '</small></span></label>';
         }).join('') + '</div>' : '<p class="hint">No hay productos con stock en esta selección.</p>') + '</div>' : '') +
-      (pz.code && pz.phone ? '<label class="check"><input type="checkbox" id="poster-phone"' + (pz.showPhone ? ' checked' : '') + '>Mostrar el WhatsApp de ' + esc(first) + '</label>' : '') +
       '<div class="poster-prev' + (pz.kind === 'story' ? ' story' : '') + '">' + (pz.url ? '<img src="' + pz.url + '" alt="Vista previa">' : '<div class="empty">Armando la imagen…</div>') + '</div>' +
-      '<p class="hint">' + (promo
-        ? 'Mandala por WhatsApp o subila a estados e Instagram. ' + (pz.code ? 'El QR y el código llevan al catálogo y los pedidos quedan a nombre de ' + esc(first) + '.' : 'Es la versión general, sin vendedor.')
-        : (pz.kind === 'a4' ? 'Imprimilo en A4, a color, y pegalo en el puesto. El QR lleva al catálogo y todo lo que pidan queda a nombre de ' + esc(first) + '.' : 'Subilo a los estados de WhatsApp o a Instagram.')) + '</p>' +
+      '<p class="hint">' + (promo ? 'Mandala por WhatsApp o subila a estados e Instagram. ' : pz.kind === 'a4' ? 'Imprimilo en A4, a color, y pegalo en el puesto. ' : 'Subilo a los estados de WhatsApp o a Instagram. ') +
+        (pz.dest === 'catalogo' ? 'El QR abre el catálogo' : 'El QR abre ' + (hasChannel() ? 'nuestro canal de WhatsApp' : 'WhatsApp con un mensaje para sumarse a la lista de difusión')) +
+        (pz.code ? ' y el cliente queda a nombre de ' + esc(first) + '.' : '.') + ' El WhatsApp que figura es el del negocio' + (ourWa() ? ' (' + esc(ourWa()) + ')' : '') + '.</p>' +
+      (pz.dest === 'canal' && !hasChannel() && isAdmin() ? '<p class="hint">Tip: si creás un canal de WhatsApp, pegá su link en Datos y ajustes → “Link del canal de WhatsApp” y el QR va directo ahí. Los carteles ya impresos siguen funcionando.</p>' : '') +
       '<div class="ctas">' +
       (pz.url ? '<a class="btn btn-main btn-sm" href="' + pz.url + '" download="' + fname + '">Descargar</a>' : '') +
       (pz.url && canShare ? '<button class="btn btn-line btn-sm" type="button" data-act="poster-share">' + ic('share', 18) + 'Compartir por WhatsApp</button>' : '') +
@@ -1901,9 +2108,36 @@
     fetch(poster.url).then(function (r) { return r.blob(); }).then(function (blob) {
       var isJpg = blob.type === 'image/jpeg';
       var file = new File([blob], (poster.type === 'promo' ? 'promo-' : 'cartel-') + (poster.code || 'general') + (isJpg ? '.jpg' : '.png'), { type: blob.type || 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file], text: 'Catálogo de ' + cfg.brand.name + ': ' + (poster.code ? sellerLink(poster.code) : location.origin + '/#catalogo') });
+      var txt = poster.dest === 'catalogo' ? 'Catálogo de ' + cfg.brand.name + ' con precios de depósito: ' + qrTarget(poster) : 'Sumate a las ofertas de ' + cfg.brand.name + ' por WhatsApp: ' + qrTarget(poster);
+      if (navigator.canShare && navigator.canShare({ files: [file] })) return navigator.share({ files: [file], text: txt });
       setToast('Tu celular no permite compartir directo. Usá “Descargar”.', true);
     }).catch(function () {});
+  }
+
+  /* ================= QR del canal de difusión ================= */
+  var canalDone = false;
+  function canalCode() { return refName ? refCode : cleanCode(buyer.ref); }
+  function canalView() {
+    var code = canalCode(), target = canalTarget(code, refName);
+    var wa = ourWa();
+    return '<section class="canal-go"><div class="wrap"><div class="canal-box">' +
+      '<span class="canal-ico">' + ic('megaphone', 34) + '</span>' +
+      '<h1 class="h2">Te llevamos a las ofertas de ' + esc(cfg.brand.name) + '</h1>' +
+      '<p>' + (hasChannel() ? 'Se abre nuestro canal de WhatsApp: tocá <b>Unirme</b> y listo, te llegan el catálogo y las ofertas de la semana.'
+        : 'Se abre WhatsApp con el mensaje listo: tocá <b>Enviar</b> y te sumamos a la lista de difusión.') + '</p>' +
+      (!hasChannel() && wa ? '<p class="canal-save">' + ic('info', 18) + '<span>Agendá nuestro número <b class="num">' + esc(wa) + '</b>: sin eso, WhatsApp no te deja recibir las ofertas.</span></p>' : '') +
+      (refName && code ? '<div class="ref-chip">' + ic('users', 18) + '<span>Te atiende <b>' + esc(refName) + '</b> · código ' + esc(code) + '</span></div>' : '') +
+      '<div class="ctas"><a class="btn btn-main" href="' + esc(target) + '" rel="noopener">' + ic('wa') + (hasChannel() ? 'Abrir el canal' : 'Abrir WhatsApp') + '</a>' +
+      '<a class="btn btn-line" href="#catalogo" data-go="catalogo">Ver el catálogo</a></div>' +
+      '</div></div></section>';
+  }
+  function canalRedirect() {
+    if (canalDone || !goCanal) return;
+    canalDone = true;
+    var code = canalCode();
+    bump('qr-' + (code || 'general'), 'views');
+    render(true);
+    setTimeout(function () { if (view === 'canal') window.location.href = canalTarget(code, refName); }, 1600);
   }
 
   /* ================= render ================= */
@@ -1911,12 +2145,14 @@
     if (!cfg) return;
     var y = window.scrollY;
     var active = document.activeElement && document.activeElement.id;
-    var main = view === 'catalogo' ? catalog() : view === 'admin' ? adminView() : view === 'contacto' ? contactView() : landing();
+    if (view === 'admin' && isClient()) { view = 'cuenta'; setHash('cuenta'); }
+    if (view === 'cuenta' && (isStaff() || isSeller())) view = 'admin';
+    var main = view === 'canal' ? canalView() : view === 'catalogo' ? catalog() : view === 'admin' ? adminView() : view === 'cuenta' ? accountView() : view === 'contacto' ? contactView() : landing();
     var t = cartTotals();
     document.body.classList.toggle('has-cart', !!t.count && view !== 'admin');
     document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster));
     app.innerHTML = header() + '<main>' + main + '</main>' + (view === 'admin' ? '' : footer()) +
-      (view === 'admin' ? '' : '<a class="wa-float" href="' + esc(waLink('Hola ' + cfg.brand.name + '!')) + '" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">' + ic('wa', 30) + '</a>') +
+      (view === 'admin' || view === 'canal' ? '' : '<a class="wa-float" href="' + esc(waLink('Hola ' + cfg.brand.name + '!')) + '" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">' + ic('wa', 30) + '</a>') +
       cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal();
     if (keepScroll) window.scrollTo(0, y);
     if (view === 'admin' && isSeller()) drawQR();
@@ -1933,6 +2169,7 @@
     view = v; cartOpen = false; share = null; detailId = null;
     setHash(v); render(); window.scrollTo(0, 0);
     if (v === 'admin' && isStaff() && orders === null) loadOrders();
+    if (v === 'cuenta' && isClient()) loadMyOrders();
   }
 
   /* ================= imágenes ================= */
@@ -2066,6 +2303,8 @@
     d.shipping.zones = (d.shipping.zones || []).filter(function (z) { return String(z.name || '').trim(); }).map(function (z) { return { name: String(z.name).trim().slice(0, 60), cost: Math.max(0, Number(z.cost) || 0), eta: String(z.eta || '').trim().slice(0, 60) }; });
     d.settings.minOrder = Number(d.settings.minOrder) || 0;
     d.contact.whatsapp = digits(d.contact.whatsapp);
+    d.contact.channel = String(d.contact.channel || '').trim();
+    if (d.contact.channel && !/^https?:\/\//.test(d.contact.channel)) { setToast('El link del canal tiene que empezar con https://'); return; }
     busy = true; render(true);
     fb.db.collection('site').doc('main').set(d).then(function () {
       cfg = d; cfgDraft = cfgBase();
@@ -2119,7 +2358,11 @@
         : { mode: 'retiro' },
       status: 'nuevo',
       createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, orderRef() ? { ref: orderRef() } : {})) : Promise.resolve();
+    }, orderRef() ? { ref: orderRef() } : {}, isClient() && user ? { uid: user.uid } : {})) : Promise.resolve();
+    if (ref && isClient() && user && customer && !customer.error && (!customer.barrio || !customer.phone || (effMode() === 'envio' && !customer.address))) {
+      var upd = Object.assign({}, customer, { name: customer.name || buyer.name, phone: customer.phone || digits(buyer.phone), barrio: customer.barrio || buyer.barrio, address: customer.address || (effMode() === 'envio' ? buyer.address : ''), zone: customer.zone || (effMode() === 'envio' ? buyer.zone : '') });
+      saveCustomerDoc(upd, !customer.createdAt).then(function () { customer = upd; }).catch(function () {});
+    }
     var timeout = new Promise(function (res) { setTimeout(res, 2500); });
     Promise.race([write.catch(function () {}), timeout]).then(function () {
       lastOrder = { code: code, link: link };
@@ -2190,7 +2433,9 @@
           loginMsg = ''; resolveRole(user);
         }).catch(function (e) { loginMsg = authError(e); render(true); });
         break;
-      case 'logout': loginMsg = ''; loginMode = 'login'; fb.auth.signOut(); break;
+      case 'logout': loginMsg = ''; loginMode = 'login'; fb.auth.signOut(); if (view === 'admin') go('cuenta'); break;
+      case 'save-profile': saveProfile(); break;
+      case 'repeat-order': { var ro = (myOrders || []).filter ? myOrders.filter(function (o) { return o.id === id; })[0] : null; if (ro) repeatOrder(ro); break; }
       case 'contact-go': e.preventDefault(); contactType = a.getAttribute('data-type'); contactSent = null; go('contacto'); break;
       case 'ctype': contactType = a.getAttribute('data-type'); render(true); break;
       case 'ct-again': contactSent = null; render(true); break;
@@ -2211,6 +2456,7 @@
       case 'poster': openPoster(a.getAttribute('data-code') || '', a.getAttribute('data-type') || 'qr'); break;
       case 'poster-type': if (poster && poster.type !== a.getAttribute('data-type')) { poster.type = a.getAttribute('data-type'); poster.kind = poster.type === 'promo' ? 'story' : 'a4'; buildPoster(); } break;
       case 'close-poster': poster = null; render(true); break;
+      case 'poster-dest': if (poster && poster.dest !== a.getAttribute('data-dest')) { poster.dest = a.getAttribute('data-dest'); buildPoster(); } break;
       case 'poster-kind': if (poster && poster.kind !== a.getAttribute('data-kind')) { poster.kind = a.getAttribute('data-kind'); buildPoster(); } break;
       case 'poster-share': sharePoster(); break;
       case 'lead-seller': {
@@ -2290,6 +2536,9 @@
     }
     if (t.id === 'l-email') { loginEmail = t.value; return; }
     if (t.id === 'l-pass') { loginPass = t.value; return; }
+    if (t.id === 'l-name') { loginName = t.value; return; }
+    if (t.id === 'l-phone') { loginPhone = t.value; return; }
+    if (t.hasAttribute('data-cf') && custForm) { custForm[t.getAttribute('data-cf')] = t.value; if (t.tagName === 'SELECT') render(true); return; }
     if (t.hasAttribute('data-buyer')) {
       var bk = t.getAttribute('data-buyer');
       buyer[bk] = bk === 'ref' ? cleanCode(t.value) : t.value; persistCart();
@@ -2318,7 +2567,6 @@
     var t = e.target;
     if (t.type === 'checkbox' || t.tagName === 'SELECT') t.dispatchEvent(new Event('input', { bubbles: true }));
     if (t.id === 'rsort') { rSort = t.value; render(true); return; }
-    if (t.id === 'poster-phone' && poster) { poster.showPhone = t.checked; buildPoster(); return; }
     if (t.hasAttribute('data-pick') && poster) {
       var pid = t.getAttribute('data-pick'), ix = poster.sel.indexOf(pid);
       if (t.checked && ix === -1 && poster.sel.length < 6) poster.sel.push(pid);
@@ -2410,7 +2658,8 @@
     var c = clone(d); var ps = c.products || []; delete c.products; return { cfg: c, products: ps };
   }
   function start() {
-    if (lastOrder && !cartLines().length) cartOpen = true;
+    if (goCanal) { view = 'canal'; cartOpen = false; }
+    else if (lastOrder && !cartLines().length) cartOpen = true;
     render();
   }
   if (!(window.firebase && window.GALPON_FIREBASE)) {
@@ -2443,11 +2692,12 @@
       if (rc) fb.db.collection('codes').doc(rc).get().then(function (d) {
         if (d.exists && d.data().active !== false) { refCode = rc; refName = d.data().name || rc; buyer.ref = rc; }
         else { refCode = ''; refName = ''; try { localStorage.removeItem('galpon-ref'); } catch (e) {} }
-        render(true);
-      }).catch(function () {});
+        render(true); canalRedirect();
+      }).catch(function () { canalRedirect(); });
+      else canalRedirect();
       fb.auth.getRedirectResult().catch(function (err) { if (err && err.code) { loginMsg = authError(err); render(true); } });
       fb.auth.onAuthStateChanged(function (u) {
-        user = u; role = null; authReady = true;
+        user = u; role = null; authReady = true; customer = null; myOrders = null; custForm = null;
         if (!u) { orders = null; team = null; sellerData = null; sellerCode = null; render(true); return; }
         resolveRole(u);
       });
@@ -2455,9 +2705,10 @@
   }).catch(function () {
     app.innerHTML = '<div class="wrap" style="padding-block:80px;text-align:center">No se pudo cargar el catálogo. Recargá la página.</div>';
   });
+  // Una sola puerta de entrada: dueño y equipo (mail verificado) van al panel; el resto, a su cuenta de cliente.
   function resolveRole(u) {
     role = null;
-    if (!u.emailVerified) { render(true); return; }
+    if (!u.emailVerified) { afterLogin(); return; }
     var em = String(u.email || '').toLowerCase();
     if (OWNERS.indexOf(em) !== -1) { role = 'owner'; afterLogin(); return; }
     fb.db.collection('team').doc(em).get().then(function (d) {
@@ -2468,6 +2719,9 @@
     }).catch(function () { afterLogin(); });
   }
   function afterLogin() {
+    if (!role) role = 'client';
+    if (isClient()) { loadCustomer(); loadMyOrders(); if (view === 'admin') { view = 'cuenta'; setHash('cuenta'); } }
+    else if (view === 'cuenta') { view = 'admin'; setHash('admin'); }
     if (isStaff()) { loadOrders(); loadSellers(); loadClients(); if (adminTab === 'equipo') loadTeam(); if (adminTab === 'productos') loadStats(); }
     if (isAdmin()) { loadLeads(); loadPayouts(); }
     if (isSeller()) loadSellerData();

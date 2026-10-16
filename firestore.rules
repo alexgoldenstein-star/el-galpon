@@ -35,6 +35,10 @@ service cloud.firestore {
     function myCode() {
       return get(teamPath()).data.sellerCode;
     }
+    // Clientes: alcanza con haber iniciado sesión (la ficha y los pedidos van atados a su uid).
+    function authed() {
+      return request.auth != null;
+    }
     function optStr(d, k, max) {
       return !(k in d) || (d[k] is string && d[k].size() <= max);
     }
@@ -84,9 +88,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Interés por producto (vistas y agregados al carrito): suma de a uno.
+    // Interés por producto (vistas y agregados al carrito) y escaneos de QR: suma de a uno.
     match /stats/{pid} {
-      allow read: if isStaff();
+      allow read: if isStaff() || (isSeller() && pid == 'qr-' + myCode());
       allow create: if request.resource.data.keys().hasOnly(['views', 'adds'])
         && request.resource.data.get('views', 0) <= 1
         && request.resource.data.get('adds', 0) <= 1;
@@ -98,14 +102,17 @@ service cloud.firestore {
     // Pedidos: cualquiera registra uno nuevo con formato controlado.
     // El equipo los ve, cambia el estado, asigna vendedor y calcula comisión.
     // Cada vendedor ve los pedidos de sus clientes y los que le dan comisión extra.
+    // Cada cliente ve los pedidos que hizo con su cuenta.
     match /orders/{orderId} {
       allow read: if isStaff()
-        || (isSeller() && (resource.data.sellerCode == myCode() || resource.data.overrideCode == myCode()));
+        || (isSeller() && (resource.data.sellerCode == myCode() || resource.data.overrideCode == myCode()))
+        || (authed() && resource.data.uid == request.auth.uid);
       allow update: if isStaff()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'sellerCode', 'overrideCode', 'assignVia', 'commission', 'deliveredAt'])
         && request.resource.data.status in ['nuevo', 'confirmado', 'listo', 'entregado', 'cancelado'];
       allow delete: if isAdmin();
-      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'phone', 'items', 'total', 'shipping', 'grand', 'delivery', 'ref', 'status', 'createdAt'])
+      allow create: if request.resource.data.keys().hasOnly(['code', 'name', 'barrio', 'phone', 'items', 'total', 'shipping', 'grand', 'delivery', 'ref', 'uid', 'status', 'createdAt'])
+        && (!('uid' in request.resource.data) || (authed() && request.resource.data.uid == request.auth.uid))
         && request.resource.data.status == 'nuevo'
         && request.resource.data.code is string && request.resource.data.code.size() <= 10
         && request.resource.data.name is string && request.resource.data.name.size() <= 80
@@ -140,6 +147,21 @@ service cloud.firestore {
         && optStr(request.resource.data, 'message', 600)
         && optStr(request.resource.data, 'ref', 12)
         && request.resource.data.createdAt == request.time;
+    }
+
+    // Cuenta de cliente: cada uno lee y edita su ficha; el equipo las ve.
+    match /customers/{uid} {
+      allow read: if isStaff() || (authed() && request.auth.uid == uid);
+      allow create, update: if authed() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'barrio', 'address', 'zone', 'email', 'ref', 'createdAt', 'updatedAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 15
+        && optStr(request.resource.data, 'barrio', 80)
+        && optStr(request.resource.data, 'address', 160)
+        && optStr(request.resource.data, 'zone', 60)
+        && optStr(request.resource.data, 'email', 100)
+        && optStr(request.resource.data, 'ref', 12);
+      allow delete: if isAdmin();
     }
 
     // Notas internas sobre clientes: solo el equipo.

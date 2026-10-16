@@ -50,8 +50,7 @@ Cuando el revendedor toca **Enviar pedido por WhatsApp**, el pedido se guarda co
 2. **Asignación del cliente:** el feriante queda a nombre del vendedor si entra por su link, si escribe su código en el carrito o si ya era su cliente (por teléfono). El primero que lo trajo lo conserva mientras compre: vence a los 6 meses sin compras. Desde el pedido podés reasignarlo a mano.
 3. **Comisión:** se calcula al marcar el pedido como Entregado, sobre los productos (el envío no suma), con el % de cada rubro. Si el vendedor fue sumado por otro, el que lo sumó cobra un extra durante los primeros meses. Un solo nivel.
 4. **Liquidación:** en Vendedores, “Liquidar” registra el pago de todo lo pendiente y marca esos pedidos como pagados. Un pedido liquidado ya no se puede cancelar ni reasignar.
-5. **Promo con productos y cartel con QR:** desde el panel del vendedor, desde Vendedores (“Promo y cartel”) o desde Productos (“Armar promo”, versión general sin vendedor). La promo muestra hasta 6 productos con foto, precio y ganancia, en formato vertical para estados o 4:5 para feed y WhatsApp. El cartel con QR sale en A4 para imprimir.
-   - Antes: **Cartel con QR:** cada vendedor genera su cartel desde su panel (“Cartel con tu QR para la feria”), y vos desde Panel → Vendedores → “Cartel con QR”. Hay dos formatos: A4 para imprimir y vertical para estados. El QR lleva al catálogo con su código, así todo lo que entra por ahí queda a su nombre.
+5. **Promo con productos y cartel con QR:** desde el panel del vendedor, desde Vendedores (“Promo y cartel”) o desde Panel → Promos y QR. La promo muestra hasta 6 productos con foto, precio y ganancia, en formato vertical para estados o 4:5 para feed y WhatsApp. El cartel con QR sale en A4 para imprimir.
 6. **Transparencia:** las reglas se muestran iguales en la web (Contacto → Quiero ser vendedor) y en el panel de cada vendedor, con sus pedidos, clientes, equipo y liquidaciones.
 
 ## Fotos de productos en promos e imágenes para compartir (una sola vez)
@@ -68,11 +67,21 @@ gsutil cors set cors.json gs://el-galpon-b3cac.firebasestorage.app
 
 Si no lo hacés, las promos igual se arman, pero las fotos subidas salen reemplazadas por la inicial del producto.
 
-## Probar el panel de vendedor
+## Cuentas: clientes, vendedores y equipo
 
-1. Panel → Vendedores → **Nuevo vendedor**, con un mail distinto al tuyo (un Gmail de prueba sirve).
-2. Abrí una **ventana de incógnito**, entrá a `/#admin`, tocá **“Es mi primera vez: crear acceso”** con ese mail y verificalo.
-3. Vas a ver el panel del vendedor: su link, su QR, la promo con productos, sus pedidos y comisiones. Para probar la asignación, abrí su link en otra ventana y hacé un pedido.
+Hay una sola puerta de entrada: el botón **Ingresar** (arriba a la derecha) o `/#cuenta`.
+- **Clientes (feriantes):** crean su cuenta con nombre, WhatsApp, mail y contraseña (o con Google). En **Mi cuenta** ven sus pedidos con el estado (recibido, confirmado, listo, entregado), los repiten con un toque y editan sus datos. Los pedidos que hacen estando dentro quedan guardados en su cuenta. Si entraron por el link o QR de un vendedor, queda guardado.
+- **Vendedores:** se dan de alta en Panel → Vendedores con su mail. Crean su cuenta con ese mismo mail, lo verifican y entran directo a su panel.
+- **Equipo y dueño:** igual, con el mail cargado en Equipo (o en `GALPON_ADMINS`).
+
+Para probar el portal de vendedor: Panel → Vendedores → Nuevo vendedor con un mail distinto al tuyo; en una ventana de incógnito tocá **Ingresar → No tengo cuenta: crearla** con ese mail, verificalo y tocá **Ya verifiqué**.
+
+## Canal de difusión y QR
+
+- En **Datos y ajustes** cargá el WhatsApp del negocio y, si tenés, el **Link del canal de WhatsApp**.
+- Todos los QR (cartel, promo, panel del vendedor) apuntan a `tu-sitio/?v=CODIGO&go=canal`: la web registra al vendedor y salta sola al canal. Si no hay link de canal, abre WhatsApp con el mensaje “Quiero sumarme a la lista de difusión… vengo de parte de X (código X)”. Como el QR apunta a la web, los carteles impresos siguen andando aunque cambies el canal.
+- En banners y carteles figura siempre **el WhatsApp del negocio**.
+- **Panel → Promos y QR:** promo general con productos, cartel general, los de cada vendedor y los escaneos de cada QR.
 
 ## Equipo y permisos
 
