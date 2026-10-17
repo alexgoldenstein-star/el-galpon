@@ -14,3 +14,7 @@ window.GALPON_FIREBASE = {
 window.GALPON_ADMINS = [
   "alexgoldenstein@hotmail.com"
 ];
+
+// Protección anti-spam (App Check con reCAPTCHA v3). Pegá acá la "clave del sitio" cuando la crees (ver README).
+// Vacío = desactivado.
+window.GALPON_APPCHECK_KEY = "";

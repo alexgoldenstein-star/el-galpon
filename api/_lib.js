@@ -108,4 +108,28 @@ function mpSignatureOk(req, dataId) {
 function payCfg(site) { return Object.assign({ enabled: false, mode: 'total', pct: 30, when: 'confirmado' }, (site && site.payments) || {}); }
 function payAmount(o, P) { const g = Number(o.grand != null ? o.grand : o.total) || 0; return P.mode === 'sena' ? Math.round(g * (Number(P.pct) || 30) / 100) : g; }
 
-module.exports = { getAdmin, hasAdmin, hasWA, hasMP, staffFromReq, body, send, siteUrl, money, waPhone, waSend, mp, mpSignatureOk, payCfg, payAmount };
+// Protección anti-spam: App Check (si está configurado) y límite por IP.
+async function appCheckOk(req) {
+  const tok = req.headers['x-firebase-appcheck'];
+  if (!tok) return process.env.APPCHECK_ENFORCE !== '1';
+  try { await getAdmin().appCheck().verifyToken(String(tok)); return true; } catch (e) { return process.env.APPCHECK_ENFORCE !== '1'; }
+}
+function clientIp(req) { return String(req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || '').split(',')[0].trim(); }
+async function rateLimit(req, bucket, max, windowMs) {
+  const db = getAdmin().firestore();
+  const key = bucket + '-' + crypto.createHash('sha256').update(clientIp(req) + '|' + (process.env.RL_SALT || 'galpon')).digest('hex').slice(0, 32);
+  const ref = db.collection('ratelimits').doc(key);
+  return db.runTransaction(async (tx) => {
+    const s = await tx.get(ref), now = Date.now();
+    const d = s.exists ? s.data() : { n: 0, start: now };
+    if (now - d.start > windowMs) { d.n = 0; d.start = now; }
+    if (d.n >= max) return false;
+    tx.set(ref, { n: d.n + 1, start: d.start, exp: new Date(d.start + windowMs * 2) });
+    return true;
+  });
+}
+async function audit(db, entry) {
+  try { await db.collection('audit').add(Object.assign({ at: Date.now() }, entry)); } catch (e) { /* el historial nunca frena una operación */ }
+}
+
+module.exports = { appCheckOk, clientIp, rateLimit, audit, getAdmin, hasAdmin, hasWA, hasMP, staffFromReq, body, send, siteUrl, money, waPhone, waSend, mp, mpSignatureOk, payCfg, payAmount };

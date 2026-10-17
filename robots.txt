@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Sitemap: https://el-galpon-seven.vercel.app/sitemap.xml

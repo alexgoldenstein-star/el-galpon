@@ -788,3 +788,55 @@ details.rules-box[open] summary{margin-bottom:8px}
 .biz-card svg{color:var(--orange-deep);flex:none;margin-top:2px}
 s.muted{color:var(--ink-3);font-weight:500}
 .como-sec .sub-h{margin-top:22px}.como-sec .tiers + .hint{margin-top:8px}.como-sec .rewards{margin-top:12px;max-width:760px}
+
+/* v14 · subrubros y lista rápida */
+.subchips{margin-top:8px}
+.chip.sm{min-height:36px;padding:6px 12px;font-size:14px}
+.toolbar-row{display:flex;gap:10px;align-items:center}
+.toolbar-row .search{flex:1;min-width:0}
+.view-toggle{display:flex;border:2px solid var(--line);border-radius:12px;overflow:hidden;flex:none}
+.view-toggle button{border:0;background:var(--surface);color:var(--ink-2);font:inherit;font-weight:700;font-size:14px;padding:0 12px;min-height:44px;cursor:pointer}
+.view-toggle button.on{background:var(--ink);color:var(--bg)}
+@media (max-width:480px){.view-toggle button{padding:0 9px;font-size:13px}}
+.qlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--surface)}
+.qrow{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-top:1px solid var(--line)}
+.qrow:first-child{border-top:0}
+.qrow.is-out{opacity:.55}
+.qrow-open{padding:0;border:0;background:none;cursor:pointer}
+.qrow-open img{width:64px;height:64px;object-fit:cover;border-radius:12px}
+.qrow-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.qrow-info b{font-size:15px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.qrow-info .num{font-size:15px;font-weight:800}
+.qrow-info em.g{font-style:normal;font-weight:700;font-size:13px;color:var(--green);margin-left:4px}
+.qrow-badges .badges{position:static;display:flex;gap:4px;flex-wrap:wrap}
+.qrow-qty .add{min-height:40px;padding:0 14px;font-size:14px}
+.reorder{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;background:var(--surface-2);border-radius:14px;padding:10px 14px;font-weight:600;font-size:15px}
+.reorder span{flex:1;min-width:180px}
+.sub-panel{background:var(--bg)!important;display:block!important}
+.sub-list{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+.sub-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed var(--line);font-size:15px}
+.sub-item small{color:var(--ink-3)}
+.sub-item.editing input{flex:1;height:38px;border:2px solid var(--ink);border-radius:10px;padding:0 10px}
+.icon-btn.sm{width:32px;height:32px;font-size:14px}
+.linkbtn.sm{font-size:13px;min-height:0}
+
+/* v15 · app instalable, sin señal, seguridad */
+.install-card{display:flex;align-items:center;gap:12px;background:var(--surface);border:2px solid var(--orange);border-radius:16px;padding:12px 14px;margin-top:14px;position:relative}
+.install-card img{border-radius:12px;flex:none}
+.install-card div{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.install-card span{font-size:14px;color:var(--ink-2)}
+.install-card .x.sm{width:32px;height:32px;flex:none}
+@media (max-width:480px){.install-card{flex-wrap:wrap}.install-card .btn{order:3;width:100%}}
+.offline-bar{position:sticky;top:0;z-index:30;display:flex;gap:8px;align-items:center;justify-content:center;background:var(--warn-bg);color:var(--warn);font-weight:700;font-size:14px;padding:8px 16px;text-align:center}
+.ver{display:inline-flex;gap:6px;align-items:flex-start;font-size:13px;font-weight:700;padding:4px 10px;border-radius:10px;align-self:flex-start}
+.ver.ok{background:var(--green-bg);color:var(--green)}
+.ver.bad{background:var(--warn-bg);color:var(--warn)}
+.ver svg{flex:none;margin-top:2px}
+.audit-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.audit-row{display:grid;grid-template-columns:110px minmax(140px,220px) minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:10px 12px;border-top:1px solid var(--line);font-size:14px;background:var(--surface)}
+.audit-row:first-child{border-top:0}
+.audit-row span{color:var(--ink-2)}
+.audit-row small{color:var(--ink-3);font-size:12px}
+.audit-row.err b{color:var(--danger)}
+@media (max-width:760px){.audit-row{grid-template-columns:1fr;gap:2px}}
+@media (max-width:480px){.toolbar-row{flex-wrap:wrap}.toolbar-row .search{flex-basis:100%}.view-toggle{margin-left:auto}}

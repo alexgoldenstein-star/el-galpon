@@ -8,12 +8,15 @@ Landing + catálogo para revendedores, con pedido por WhatsApp. Sitio estático 
 | --- | --- |
 | `index.html` | La página |
 | `styles.css` | Diseño (colores, tipografías, celular y compu) |
-| `app.js` | Lógica: inicio, catálogo, carrito, compartir, panel de administrador y pedidos |
 | `firebase-config.js` | Conexión a Firebase y **lista de mails administradores** |
 | `firestore.rules` / `storage.rules` | Reglas de seguridad (quién lee y quién escribe) |
 | `data.json` | Datos iniciales. Se usan hasta la primera vez que publicás desde el panel |
 | `img/` | Fotos iniciales (las del depósito son de muestra: reemplazarlas por reales) |
-| `api/` | Funciones de servidor: avisos por WhatsApp y Mercado Pago |
+| `app.js` | Se arma solo desde `src/` (no editar a mano): `node scripts/bundle.js` |
+| `src/` | El código del sitio separado por partes (catálogo, panel, cuenta, promos, puntos…) |
+| `api/` | Funciones de servidor: pedidos verificados, cambios de estado, WhatsApp, Mercado Pago, páginas para Google |
+| `sw.js`, `manifest.webmanifest`, `icons/` | App instalable en el celular |
+| `tests/` | Pruebas automáticas (reglas, servidor y sitio completo) |
 | `package.json` | Dependencias de las funciones (Vercel las instala solo) |
 
 ## Configurar Firebase (una sola vez)
@@ -123,7 +126,7 @@ Los avisos automáticos y Mercado Pago corren en funciones de Vercel (carpeta `a
 
 | Variable | Qué es |
 | --- | --- |
-| `FIREBASE_SERVICE_ACCOUNT` | Firebase → ⚙ Configuración del proyecto → Cuentas de servicio → **Generar nueva clave privada**. Pegá el contenido completo del archivo JSON. No lo compartas con nadie. |
+| `FIREBASE_SERVICE_ACCOUNT` | **La más importante:** activa los pedidos verificados, los cambios de estado seguros, el historial y los errores. Firebase → ⚙ Configuración del proyecto → Cuentas de servicio → **Generar nueva clave privada**. Pegá el contenido completo del archivo JSON. No lo compartas con nadie. |
 | `SITE_URL` | La dirección del sitio, por ejemplo `https://el-galpon-seven.vercel.app` (o tu dominio). |
 | `MP_ACCESS_TOKEN` | Mercado Pago (ver abajo). |
 | `MP_WEBHOOK_SECRET` | Mercado Pago (ver abajo). |
@@ -153,6 +156,64 @@ Necesitás un número **exclusivo** para la API (uno que no esté usando la app 
 5. Cargá una forma de pago en Meta: los mensajes de utilidad tienen un costo bajo por mensaje.
 
 Con eso, cada vez que cambiás el estado de un pedido el cliente recibe el aviso solo (se puede apagar en Datos y ajustes) y a vos te llega cada pedido nuevo. Los botones de WhatsApp manuales siguen estando.
+
+## Rubros y subrubros
+
+La estructura recomendada son 5 rubros con sus subrubros: **Bazar** (tappers, vasos, frascos, ollas, termos…), **Hogar** (limpieza, organización, baño, deco…), **Tecnología** (cargadores, auriculares, parlantes, accesorios de celular…), **Marroquinería** (billeteras, mochilas, riñoneras, bolsos…) y **Blanquería** (sábanas, toallas, acolchados, manteles…).
+- Productos → **Rubros** → **Usar la estructura sugerida**: crea todo y reubica los productos que ya tenías.
+- Cada rubro se despliega para agregar, renombrar, ordenar o quitar subrubros. En el editor de producto elegís rubro y subrubro (o creás uno nuevo).
+- En el catálogo, al tocar un rubro aparecen sus subrubros para filtrar. El Excel tiene la columna **Subrubro**.
+
+## Seguridad y servidor
+
+Con `FIREBASE_SERVICE_ACCOUNT` cargada en Vercel (ver “Servidor: claves en Vercel”) se activa todo esto solo:
+- **Pedidos verificados:** la web manda solo productos y cantidades; el precio, la oferta vigente, el stock, el envío y el beneficio de nivel se calculan en el servidor. Un pedido con precios trucados no pasa. En el panel cada pedido muestra “Precios verificados”.
+- **Límite anti-spam:** máximo 8 pedidos cada 10 minutos por conexión.
+- **Cambios de estado en una sola operación:** comisión, stock, puntos, nivel, cliente asignado y números públicos se actualizan juntos o no se actualiza nada.
+- **Historial** (Panel → Historial): quién cambió precios, estados, liquidaciones, ajustes, equipo, vendedores, canjes y sorteos. No se puede editar ni borrar.
+- **Errores de la web:** si algo falla en el celular de un cliente queda registrado (agrupado) en Panel → Historial.
+- Si el servidor no está configurado, la web sigue funcionando como antes (los pedidos se guardan directo y se marcan “sin verificar”).
+
+### Protección con Google (App Check) — recomendado
+
+1. Entrá a [google.com/recaptcha/admin](https://www.google.com/recaptcha/admin), creá un sitio **reCAPTCHA v3** con tu dominio (y `el-galpon-seven.vercel.app`). Te da una **clave del sitio** y una **clave secreta**.
+2. Firebase → **App Check** → Apps → tu app web → **reCAPTCHA v3** → pegá la clave secreta → Guardar.
+3. En `firebase-config.js` pegá la clave del sitio en `GALPON_APPCHECK_KEY` y subí el código.
+4. Dejalo unos días y mirá en App Check que casi todo el tráfico figure como “verificado”. Después tocá **Aplicar (Enforce)** en Cloud Firestore y Storage, y en Vercel agregá la variable `APPCHECK_ENFORCE` = `1`.
+
+### Copias de seguridad automáticas (una sola vez)
+
+En [console.cloud.google.com](https://console.cloud.google.com) → proyecto **el-galpon-b3cac** → Cloud Shell (`>_`), pegá:
+
+```
+gcloud config set project el-galpon-b3cac
+gcloud firestore databases update --database='(default)' --enable-pitr
+gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=14d
+gcloud firestore fields ttls update exp --collection-group=ratelimits --enable-ttl
+```
+
+- La primera línea elige el proyecto. La segunda permite volver a cualquier minuto de los últimos 7 días. La tercera guarda una copia diaria por 14 días. La cuarta borra sola la información del límite anti-spam.
+- Además, en Panel → Historial → **Descargar copia completa** bajás todo en un archivo; guardalo una vez por semana.
+
+## App en el celular
+
+- El sitio se instala como app: en Android aparece **“Instalar”** (en el catálogo, Mi cuenta y el panel del vendedor); en iPhone, Compartir → **Agregar a inicio**. Abre directo en el catálogo, con ícono propio.
+- Guarda el catálogo y las fotos en el celular: abre rápido y se puede mirar sin señal (para enviar el pedido hace falta conexión; el carrito queda guardado).
+- **Lista rápida** en el catálogo: filas compactas con + y − para pedir en segundos. **Repetir pedido** arriba del catálogo para clientes con cuenta.
+- **Vendedores:** en “Tus clientes”, **Armarle un pedido** abre el catálogo con los datos del cliente cargados y el pedido queda a su nombre.
+- **Play Store (opcional, más adelante):** entrá a [pwabuilder.com](https://www.pwabuilder.com), poné la dirección del sitio y bajá el paquete para Android. Se publica con una cuenta de desarrollador de Google (pago único). El sitio ya cumple los requisitos (manifest, íconos y funcionamiento sin señal).
+
+## Google y vista previa en WhatsApp
+
+- Cada producto tiene su página: `/p/ID` (por ejemplo, la que se comparte con “Pasarle este producto a otro feriante”). Al mandarla por WhatsApp se ve la foto, y Google la puede encontrar.
+- Cada rubro tiene la suya: `/c/bazar`, `/c/tecnologia`, etc. El mapa del sitio está en `/sitemap.xml`.
+- Para aparecer más rápido: entrá a [search.google.com/search-console](https://search.google.com/search-console), agregá tu dominio y en **Sitemaps** cargá `sitemap.xml`. Si usás dominio propio, actualizá la última línea de `robots.txt`.
+
+## Código y pruebas
+
+- El código del sitio está separado en partes dentro de `src/` (una por sección). `app.js` se arma con `node scripts/bundle.js` y se sube ya armado.
+- `npm test` corre todas las pruebas: reglas de seguridad (48), funciones del servidor (24) y el sitio completo en un navegador (20).
+- En GitHub corren solas en cada `git push` (pestaña **Actions**): si algo se rompe, aparece en rojo.
 
 ## Equipo y permisos
 

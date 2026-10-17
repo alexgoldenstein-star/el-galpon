@@ -1,0 +1,102 @@
+// Pruebas de las reglas de seguridad de Firestore (quién puede leer y escribir qué).
+// Corre con:  npm run test:rules   (levanta el emulador de Firestore)
+import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { doc, setDoc, getDoc, getDocs, updateDoc, collection, query, where, orderBy, limit, serverTimestamp, increment, addDoc } from 'firebase/firestore';
+const rules = readFileSync(fileURLToPath(new URL('../firestore.rules', import.meta.url)), 'utf8');
+const R = []; const t = async (n, p) => { try { await p; R.push('OK  ' + n); } catch (e) { R.push('BAD ' + n + ' ' + e.message.slice(0, 100)); } };
+async function suite(fn) { const env = await initializeTestEnvironment({ projectId: 'demo-galpon', firestore: { rules, host: '127.0.0.1', port: 8085 } }); await fn(env); await env.cleanup(); }
+await suite(async (env) => {
+await env.withSecurityRulesDisabled(async c => {
+  const db=c.firestore();
+  await setDoc(doc(db,'orders','o1'),{uid:'rosa',name:'Rosa',status:'nuevo'});
+  await setDoc(doc(db,'orders','o2'),{uid:'otro',name:'X',status:'nuevo'});
+  await setDoc(doc(db,'orders','o3'),{name:'sin uid',status:'nuevo',sellerCode:'MARTA'});
+  await setDoc(doc(db,'team','marta@test.com'),{role:'seller',sellerCode:'MARTA'});
+  await setDoc(doc(db,'stats','qr-MARTA'),{views:3});
+});
+const rosa = env.authenticatedContext('rosa',{email:'rosa@test.com',email_verified:false}).firestore();
+const marta = env.authenticatedContext('m1',{email:'marta@test.com',email_verified:true}).firestore();
+const anon = env.unauthenticatedContext().firestore();
+const base={code:'ABCDE',name:'Rosa',barrio:'Feria',phone:'1199998888',items:[{id:'p1',q:1}],total:100,status:'nuevo',createdAt:serverTimestamp()};
+await t('client list own orders', assertSucceeds(getDocs(query(collection(rosa,'orders'),where('uid','==','rosa')))));
+await t('client cannot list others', assertFails(getDocs(query(collection(rosa,'orders'),where('uid','==','otro')))));
+await t('client get own', assertSucceeds(getDoc(doc(rosa,'orders','o1'))));
+await t('client get other', assertFails(getDoc(doc(rosa,'orders','o3'))));
+await t('client create order with uid', assertSucceeds(setDoc(doc(rosa,'orders','n1'),{...base,uid:'rosa'})));
+await t('client create order fake uid', assertFails(setDoc(doc(rosa,'orders','n2'),{...base,uid:'otro'})));
+await t('anon create order no uid', assertSucceeds(setDoc(doc(anon,'orders','n3'),{...base})));
+await t('anon create with uid', assertFails(setDoc(doc(anon,'orders','n4'),{...base,uid:'rosa'})));
+await t('customer create own', assertSucceeds(setDoc(doc(rosa,'customers','rosa'),{name:'Rosa',phone:'1199998888',email:'rosa@test.com',ref:'MARTA',createdAt:serverTimestamp(),updatedAt:serverTimestamp()})));
+await t('customer update merge', assertSucceeds(setDoc(doc(rosa,'customers','rosa'),{barrio:'Feria',updatedAt:serverTimestamp()},{merge:true})));
+await t('customer other', assertFails(setDoc(doc(rosa,'customers','otro'),{name:'x',phone:'1'})));
+await t('customer bad key', assertFails(setDoc(doc(rosa,'customers','rosa'),{role:'admin'},{merge:true})));
+await t('customer read own', assertSucceeds(getDoc(doc(rosa,'customers','rosa'))));
+await t('anon read customer', assertFails(getDoc(doc(anon,'customers','rosa'))));
+await t('seller list own orders', assertSucceeds(getDocs(query(collection(marta,'orders'),where('sellerCode','==','MARTA')))));
+await t('seller read own qr stat', assertSucceeds(getDoc(doc(marta,'stats','qr-MARTA'))));
+await t('seller read other stat', assertFails(getDoc(doc(marta,'stats','qr-JORGE'))));
+await t('anon bump qr stat', assertSucceeds(setDoc(doc(anon,'stats','qr-JORGE'),{views:1},{merge:true})));
+});
+await suite(async (env) => {
+await env.withSecurityRulesDisabled(async c => {
+  const db=c.firestore();
+  await setDoc(doc(db,'orders','o1'),{uid:'rosa',name:'Rosa',status:'confirmado',total:100});
+  await setDoc(doc(db,'team','ana@test.com'),{role:'editor'});
+  await setDoc(doc(db,'team','marta@test.com'),{role:'seller',sellerCode:'MARTA'});
+  await setDoc(doc(db,'customers','rosa'),{name:'Rosa',phone:'1199998888',email:'rosa@test.com',points:10});
+  await setDoc(doc(db,'draws','2026-09'),{month:'2026-09',name:'Rosa F.',at:1});
+});
+const rosa = env.authenticatedContext('rosa',{email:'rosa@test.com',email_verified:true}).firestore();
+const owner = env.authenticatedContext('o',{email:'alexgoldenstein@hotmail.com',email_verified:true}).firestore();
+const editor = env.authenticatedContext('e',{email:'ana@test.com',email_verified:true}).firestore();
+const marta = env.authenticatedContext('m',{email:'marta@test.com',email_verified:true}).firestore();
+const anon = env.unauthenticatedContext().firestore();
+await t('client edits profile w/ points present', assertSucceeds(setDoc(doc(rosa,'customers','rosa'),{barrio:'Feria',updatedAt:serverTimestamp()},{merge:true})));
+await t('client cannot set own points', assertFails(setDoc(doc(rosa,'customers','rosa'),{points:9999},{merge:true})));
+await t('client new profile with createdAt on existing points-only doc', assertSucceeds(setDoc(doc(rosa,'customers','rosa'),{name:'Rosa',phone:'1199998888',createdAt:serverTimestamp()},{merge:true})));
+await t('staff sets points', assertSucceeds(setDoc(doc(editor,'customers','rosa'),{points:50,month:{key:'2026-10',amount:65000}},{merge:true})));
+await t('staff creates points-only doc', assertSucceeds(setDoc(doc(editor,'customers','nuevo'),{points:5,month:{key:'2026-10',amount:5000}},{merge:true})));
+await t('staff cannot edit name', assertFails(setDoc(doc(editor,'customers','rosa'),{name:'X'},{merge:true})));
+await t('seller cannot set points', assertFails(setDoc(doc(marta,'customers','rosa'),{points:1},{merge:true})));
+await t('staff marks paid + stockDone + points', assertSucceeds(updateDoc(doc(editor,'orders','o1'),{payment:{status:'aprobado'},stockDone:true,points:3,status:'confirmado'})));
+await t('client cannot mark paid', assertFails(updateDoc(doc(rosa,'orders','o1'),{payment:{status:'aprobado'}})));
+await t('staff pointlog', assertSucceeds(setDoc(doc(editor,'pointlog','x'),{pts:5})));
+await t('client no pointlog', assertFails(getDoc(doc(rosa,'pointlog','x'))));
+await t('anon read draws', assertSucceeds(getDocs(query(collection(anon,'draws'),orderBy('at','desc'),limit(1)))));
+await t('editor cannot write draws', assertFails(setDoc(doc(editor,'draws','2026-10'),{at:2})));
+await t('owner write draws', assertSucceeds(setDoc(doc(owner,'draws','2026-10'),{at:2})));
+await t('staff query customers by phone', assertSucceeds(getDocs(query(collection(editor,'customers'),where('phone','==','1199998888')))));
+await t('staff clients points inc', assertSucceeds(setDoc(doc(editor,'clients','1199998888'),{points:increment(5)},{merge:true})));
+});
+await suite(async (env) => {
+await env.withSecurityRulesDisabled(async c => { const db=c.firestore(); await setDoc(doc(db,'team','ana@test.com'),{role:'editor'}); await setDoc(doc(db,'team','marta@test.com'),{role:'seller',sellerCode:'MARTA'}); await setDoc(doc(db,'customers','rosa'),{name:'Rosa',phone:'1'}); });
+const ed = env.authenticatedContext('e',{email:'ana@test.com',email_verified:true}).firestore();
+const se = env.authenticatedContext('m',{email:'marta@test.com',email_verified:true}).firestore();
+const ro = env.authenticatedContext('rosa',{email:'r@t.com',email_verified:true}).firestore();
+await t('editor writes counters', assertSucceeds(setDoc(doc(ed,'site','counters'),{delivered:3})));
+await t('editor cannot write site/main', assertFails(setDoc(doc(ed,'site','main'),{x:1})));
+await t('seller cannot write counters', assertFails(setDoc(doc(se,'site','counters'),{delivered:999})));
+await t('editor sets tier', assertSucceeds(setDoc(doc(ed,'customers','rosa'),{tier:{level:'Oro'}},{merge:true})));
+await t('client cannot set own tier', assertFails(setDoc(doc(ro,'customers','rosa'),{tier:{level:'Platino'}},{merge:true})));
+});
+await suite(async (env) => {
+  await env.withSecurityRulesDisabled(async c => { await setDoc(doc(c.firestore(),'team','ana@test.com'),{role:'editor'}); });
+  const ed = env.authenticatedContext('e',{email:'ana@test.com',email_verified:true}).firestore();
+  const ro = env.authenticatedContext('rosa',{email:'r@t.com',email_verified:true}).firestore();
+  const ow = env.authenticatedContext('o',{email:'alexgoldenstein@hotmail.com',email_verified:true}).firestore();
+  await t('staff writes own audit entry', assertSucceeds(setDoc(doc(ed,'audit','a1'),{by:'ana@test.com',at:1,action:'precio'})));
+  await t('staff cannot fake audit author', assertFails(setDoc(doc(ed,'audit','a2'),{by:'otro@test.com',at:1})));
+  await t('audit cannot be edited', assertFails(updateDoc(doc(ow,'audit','a1'),{detail:'x'})));
+  await t('editor cannot read audit', assertFails(getDoc(doc(ed,'audit','a1'))));
+  await t('owner reads audit', assertSucceeds(getDoc(doc(ow,'audit','a1'))));
+  await t('client cannot read errors', assertFails(getDoc(doc(ro,'errors','x'))));
+  await t('nobody writes errors from the web', assertFails(setDoc(doc(ow,'errors','x'),{msg:'x'})));
+  await t('client cannot create verified order', assertFails(setDoc(doc(ro,'orders','v1'),{code:'ABCDE',name:'Rosa',barrio:'x',phone:'1199998888',items:[{id:'p',q:1}],total:1,status:'nuevo',verified:true,createdAt:serverTimestamp()})));
+  await t('ratelimits private', assertFails(getDoc(doc(ow,'ratelimits','x'))));
+});
+console.log(R.join('\n'));
+const bad = R.filter((x) => x.startsWith('BAD'));
+console.log(`\n${R.length - bad.length}/${R.length} reglas OK`);
+if (bad.length) process.exit(1);

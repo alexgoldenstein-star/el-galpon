@@ -1,9 +1,22 @@
 {
   "name": "el-galpon",
   "private": true,
-  "description": "El Galpón: sitio estático + funciones de servidor (WhatsApp y Mercado Pago)",
-  "engines": { "node": ">=18" },
+  "description": "El Galpón: sitio + panel + funciones de servidor (pedidos verificados, WhatsApp, Mercado Pago, SEO)",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "bundle": "node scripts/bundle.js",
+    "check": "node scripts/bundle.js --check",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-galpon \"node tests/rules.test.mjs\"",
+    "test:api": "firebase emulators:exec --only firestore,auth --project demo-galpon \"node tests/api.test.js\"",
+    "test:e2e": "python3 tests/e2e.py",
+    "test": "npm run check && npm run test:rules && npm run test:api && npm run test:e2e"
+  },
   "dependencies": {
     "firebase-admin": "^12.7.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase": "^10.12.2",
+    "firebase-tools": "^13.29.0"
   }
 }

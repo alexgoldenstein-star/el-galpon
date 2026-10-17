@@ -32,13 +32,11 @@
     "depC": "img/deposito-3.jpg"
   },
   "categories": [
-    "Tappers",
-    "Vasos plásticos",
-    "Vasos de vidrio",
-    "Tablas de cortar",
-    "Frascos de vidrio",
-    "Blanquería",
-    "Tecno económica"
+    "Bazar",
+    "Hogar",
+    "Tecnología",
+    "Marroquinería",
+    "Blanquería"
   ],
   "products": [
     {
@@ -50,7 +48,8 @@
       "sug": 22000,
       "stock": "ok",
       "featured": true,
-      "img": "img/sabanas.jpg"
+      "img": "img/sabanas.jpg",
+      "sub": "Sábanas"
     },
     {
       "id": "p02",
@@ -61,7 +60,8 @@
       "sug": 17500,
       "stock": "ok",
       "featured": false,
-      "img": "img/toallas.jpg"
+      "img": "img/toallas.jpg",
+      "sub": "Toallas y toallones"
     },
     {
       "id": "p03",
@@ -72,7 +72,8 @@
       "sug": 39000,
       "stock": "low",
       "featured": true,
-      "img": "img/acolchado.jpg"
+      "img": "img/acolchado.jpg",
+      "sub": "Acolchados y frazadas"
     },
     {
       "id": "p04",
@@ -83,79 +84,86 @@
       "sug": 10500,
       "stock": "ok",
       "featured": false,
-      "img": "img/mantel.jpg"
+      "img": "img/mantel.jpg",
+      "sub": "Manteles y repasadores"
     },
     {
       "id": "p05",
       "name": "Batería de ollas x5",
       "desc": "Acero inoxidable, tapas de vidrio",
-      "cat": "Tappers",
+      "cat": "Bazar",
       "price": 48000,
       "sug": 72000,
       "stock": "ok",
       "featured": true,
-      "img": "img/ollas.jpg"
+      "img": "img/ollas.jpg",
+      "sub": "Ollas y sartenes"
     },
     {
       "id": "p06",
       "name": "Set de sartenes x3",
       "desc": "Antiadherentes, 20, 24 y 28 cm",
-      "cat": "Tappers",
+      "cat": "Bazar",
       "price": 29000,
       "sug": 44000,
       "stock": "ok",
       "featured": true,
-      "img": "img/sartenes.jpg"
+      "img": "img/sartenes.jpg",
+      "sub": "Ollas y sartenes"
     },
     {
       "id": "p07",
       "name": "Frascos herméticos x3",
       "desc": "Vidrio con tapa a rosca, 1 litro",
-      "cat": "Frascos de vidrio",
+      "cat": "Bazar",
       "price": 5400,
       "sug": 8900,
       "stock": "ok",
       "featured": false,
-      "img": "img/frascos.jpg"
+      "img": "img/frascos.jpg",
+      "sub": "Frascos y especieros"
     },
     {
       "id": "p08",
       "name": "Juego de platos x12",
       "desc": "Cerámica esmaltada, playos y hondos",
-      "cat": "Vasos de vidrio",
+      "cat": "Bazar",
       "price": 21000,
       "sug": 32000,
       "stock": "ok",
       "featured": false,
-      "img": "img/platos.jpg"
+      "img": "img/platos.jpg",
+      "sub": "Platos y bowls"
     },
     {
       "id": "p09",
       "name": "Copas de vidrio x6",
       "desc": "Para agua o vino, aptas lavavajillas",
-      "cat": "Vasos de vidrio",
+      "cat": "Bazar",
       "price": 9800,
       "sug": 15500,
       "stock": "ok",
       "featured": false,
-      "img": "img/copas.jpg"
+      "img": "img/copas.jpg",
+      "sub": "Vasos y jarras"
     },
     {
       "id": "p10",
       "name": "Juego de cubiertos x24",
       "desc": "Acero inoxidable, 6 personas",
-      "cat": "Vasos de vidrio",
+      "cat": "Bazar",
       "price": 12500,
       "sug": 19500,
       "stock": "out",
       "featured": false,
-      "img": "img/cubiertos.jpg"
+      "img": "img/cubiertos.jpg",
+      "sub": "Cubiertos y utensilios"
     }
   ],
   "commissions": {
     "base": 10,
     "byCat": {
-      "Tecno económica": 5
+      "Tecnología": 5
     },
     "override": 2,
     "overrideMonths": 6,
@@ -166,5 +174,54 @@
     "enabled": false,
     "zones": [],
     "note": ""
+  },
+  "subcats": {
+    "Bazar": [
+      "Tappers y herméticos",
+      "Vasos y jarras",
+      "Platos y bowls",
+      "Cubiertos y utensilios",
+      "Tablas de cortar",
+      "Frascos y especieros",
+      "Ollas y sartenes",
+      "Termos y mates",
+      "Descartables"
+    ],
+    "Hogar": [
+      "Limpieza",
+      "Organización y orden",
+      "Baño",
+      "Decoración",
+      "Iluminación",
+      "Plantas y jardín",
+      "Ferretería liviana"
+    ],
+    "Tecnología": [
+      "Cargadores y cables",
+      "Auriculares",
+      "Parlantes",
+      "Accesorios para celular",
+      "Luces LED",
+      "Pilas y linternas",
+      "Relojes y smartwatch"
+    ],
+    "Marroquinería": [
+      "Billeteras",
+      "Mochilas",
+      "Riñoneras",
+      "Bolsos y carteras",
+      "Cinturones",
+      "Valijas y bolsos de viaje",
+      "Neceseres"
+    ],
+    "Blanquería": [
+      "Sábanas",
+      "Toallas y toallones",
+      "Acolchados y frazadas",
+      "Almohadas",
+      "Manteles y repasadores",
+      "Cortinas",
+      "Alfombras"
+    ]
   }
 }

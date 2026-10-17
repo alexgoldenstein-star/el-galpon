@@ -107,7 +107,7 @@
   function isStaff() { return role === 'owner' || role === 'admin' || role === 'editor'; }
   function isAdmin() { return role === 'owner' || role === 'admin'; }
   function isSeller() { return role === 'seller'; }
-  var COMM_DEFAULT = { base: 10, byCat: { 'Tecno económica': 5 }, override: 2, overrideMonths: 6, clientMonths: 6, payEvery: 'cada 15 días' };
+  var COMM_DEFAULT = { base: 10, byCat: { 'Tecnología': 5 }, override: 2, overrideMonths: 6, clientMonths: 6, payEvery: 'cada 15 días' };
   function comm() { return (cfg && cfg.commissions) || COMM_DEFAULT; }
   function monthsMs(m) { return (Number(m) || 0) * 30 * 864e5; }
   function rateFor(catName) {
@@ -233,7 +233,7 @@
       '<button type="button" class="card-open" data-act="detail" data-id="' + esc(p.id) + '" aria-label="Ver ' + esc(p.name) + '">' +
       '<span class="card-pic"><img src="' + esc(imgOf(p)) + '" alt="" loading="lazy">' + stockBadge(p) + '</span>' +
       '<span class="card-body">' +
-      '<span class="card-cat">' + esc(p.cat) + '</span>' +
+      '<span class="card-cat">' + catLabel(p) + '</span>' +
       '<span class="card-name">' + esc(p.name) + '</span>' +
       '<span class="price-lbl">Tu precio</span>' +
       '<span class="price-row">' + priceHtml(p) + '</span>' +
@@ -364,9 +364,18 @@
       '<div class="cat-block-head"><div><h2 id="' + catSlug(title) + '-h">' + esc(title) + '</h2>' +
       '<span class="cat-count num">' + items.length + ' producto' + (items.length === 1 ? '' : 's') + (note ? ' · ' + esc(note) : '') + '</span></div>' +
       (more && filterKey ? '<button type="button" class="btn btn-line btn-sm" data-act="cat" data-cat="' + esc(filterKey) + '">Ver los ' + items.length + '</button>' : '') +
-      '</div>' +
-      '<div class="grid">' + items.slice(0, more && filterKey ? BLOCK_MAX : items.length).map(card).join('') + '</div></section>';
+      '</div>' + itemsHtml(items.slice(0, more && filterKey ? BLOCK_MAX : items.length)) + '</section>';
   }
+  // vista rápida: filas compactas para pedir rápido desde el celular
+  var catMode = 'grid';
+  try { catMode = localStorage.getItem('galpon-catmode') || 'grid'; } catch (e) {}
+  function quickRow(p) {
+    var out = p.stock === 'out';
+    return '<div class="qrow' + (out ? ' is-out' : '') + '"><button type="button" class="qrow-open" data-act="detail" data-id="' + esc(p.id) + '" aria-label="Ver ' + esc(p.name) + '"><img src="' + esc(imgOf(p)) + '" alt="" loading="lazy"></button>' +
+      '<div class="qrow-info"><b>' + esc(p.name) + '</b><span class="num">' + priceHtml(p) + ' <em class="g">ganás ' + money(gain(p)) + '</em></span>' + (stockBadge(p) ? '<span class="qrow-badges">' + stockBadge(p) + '</span>' : '') + '</div>' +
+      '<div class="qrow-qty">' + qtyControl(p, false) + '</div></div>';
+  }
+  function itemsHtml(items) { return catMode === 'list' ? '<div class="qlist">' + items.map(quickRow).join('') + '</div>' : '<div class="grid">' + items.map(card).join('') + '</div>'; }
   function catalog() {
     var catsAll = cfg.categories || [];
     var inCat = function (c) { return products.filter(function (p) { return p.cat === c; }); };
@@ -374,37 +383,46 @@
     var others = products.filter(function (p) { return catsAll.indexOf(p.cat) === -1; });
     var usedCats = catsAll.filter(function (c) { return inCat(c).length; });
     var chips = ['Todo'].concat(offers.length ? ['Ofertas'] : [], combos.length ? ['Combos'] : [], usedCats, others.length ? ['Otros'] : []);
-    if (chips.indexOf(cat) === -1) cat = 'Todo';
+    if (chips.indexOf(cat) === -1) { cat = 'Todo'; sub = ''; }
+    var subsHere = catsAll.indexOf(cat) !== -1 ? subsOf(cat).filter(function (s) { return products.some(function (p) { return p.cat === cat && p.sub === s; }); }) : [];
+    if (sub && subsHere.indexOf(sub) === -1) sub = '';
     var q = query.trim().toLowerCase();
-    var match = function (p) { return !q || (p.name + ' ' + (p.desc || '') + ' ' + (p.cat || '')).toLowerCase().indexOf(q) !== -1; };
+    var match = function (p) { return !q || (p.name + ' ' + (p.desc || '') + ' ' + (p.cat || '') + ' ' + (p.sub || '') + ' ' + (p.sku || '')).toLowerCase().indexOf(q) !== -1; };
     var body;
     if (cat === 'Todo' && !q) {
       body = (offers.length ? catBlock('Ofertas', offers, 'Ofertas', 'por tiempo limitado') : '') +
         (combos.length ? catBlock('Combos', combos, 'Combos') : '') +
-        usedCats.map(function (c) { return catBlock(c, inCat(c), c); }).join('') +
+        usedCats.map(function (c) { var s = subsOf(c).filter(function (x) { return products.some(function (p) { return p.cat === c && p.sub === x; }); }); return catBlock(c, sortBySub(inCat(c), c), c, s.length ? s.slice(0, 4).join(', ') + (s.length > 4 ? '…' : '') : ''); }).join('') +
         (others.length ? catBlock('Otros', others, 'Otros') : '');
       if (!products.length) body = '<div class="empty">Todavía no hay productos cargados.</div>';
     } else {
       var list = products.filter(function (p) {
-        var ok = cat === 'Todo' || (cat === 'Ofertas' ? onOffer(p) : cat === 'Combos' ? !!p.combo : cat === 'Otros' ? catsAll.indexOf(p.cat) === -1 : p.cat === cat);
+        var ok = cat === 'Todo' || (cat === 'Ofertas' ? onOffer(p) : cat === 'Combos' ? !!p.combo : cat === 'Otros' ? catsAll.indexOf(p.cat) === -1 : p.cat === cat && (!sub || p.sub === sub));
         return ok && match(p);
       });
-      var title = q ? 'Resultados para “' + query.trim() + '”' + (cat !== 'Todo' ? ' en ' + cat : '') : cat;
+      if (catsAll.indexOf(cat) !== -1) list = sortBySub(list, cat);
+      var where = cat !== 'Todo' ? cat + (sub ? ' › ' + sub : '') : '';
+      var title = q ? 'Resultados para “' + query.trim() + '”' + (where ? ' en ' + where : '') : where;
       body = list.length
         ? '<section class="cat-block"><div class="cat-block-head"><div><h2>' + esc(title) + '</h2><span class="cat-count num">' + list.length + ' producto' + (list.length === 1 ? '' : 's') + '</span></div>' +
-          '<button type="button" class="linkbtn" data-act="cat-all">Ver todo el catálogo</button></div>' +
-          '<div class="grid">' + list.map(card).join('') + '</div></section>'
+          '<button type="button" class="linkbtn" data-act="cat-all">Ver todo el catálogo</button></div>' + itemsHtml(list) + '</section>'
         : '<div class="empty">No encontramos productos' + (q ? ' con esa búsqueda' : ' en esta categoría') + '. <button type="button" class="linkbtn" data-act="cat-all">Ver todo el catálogo</button></div>';
     }
+    var lastO = isClient() && Array.isArray(myOrders) && myOrders.filter(function (o) { return o.status !== 'cancelado'; })[0];
     return '<div class="wrap">' +
       '<div class="cat-head"><span class="eyebrow">Precios para revendedores</span><h1 class="h2" style="margin-top:8px">Catálogo</h1>' +
       '<p class="lead" style="margin-top:10px">Tocá un producto para ver el detalle. El precio sugerido es una referencia: vos decidís a cuánto vender.</p>' +
       (cfg.settings.examplePrices ? '<div class="notice">' + ic('info', 20) + '<span>Precios de ejemplo. Los precios reales se confirman al tomar el pedido.</span></div>' : '') +
+      installCard('catalogo') + (lastO ? '<div class="reorder">' + ic('repeat', 20) + '<span>¿Lo mismo que la última vez? Pedido #' + esc(lastO.code || '') + ' · ' + (lastO.items || []).length + ' productos</span><button class="btn btn-main btn-sm" type="button" data-act="repeat-last">Repetir pedido</button></div>' : '') +
       '</div>' +
-      '<div class="toolbar"><label class="search">' + ic('search', 20) + '<input id="q" type="search" placeholder="Buscar productos" value="' + esc(query) + '" aria-label="Buscar productos"></label>' +
+      '<div class="toolbar"><div class="toolbar-row"><label class="search">' + ic('search', 20) + '<input id="q" type="search" placeholder="Buscar por nombre, rubro o código" value="' + esc(query) + '" aria-label="Buscar productos"></label>' +
+      '<div class="view-toggle" role="group" aria-label="Vista"><button type="button" class="' + (catMode !== 'list' ? 'on' : '') + '" data-act="catmode" data-mode="grid" aria-pressed="' + (catMode !== 'list') + '">Fotos</button><button type="button" class="' + (catMode === 'list' ? 'on' : '') + '" data-act="catmode" data-mode="list" aria-pressed="' + (catMode === 'list') + '">Lista</button></div></div>' +
       '<div class="chips">' + chips.map(function (c) {
         return '<button type="button" class="chip' + (c === cat ? ' on' : '') + '" data-act="cat" data-cat="' + esc(c) + '">' + esc(c) + '</button>';
-      }).join('') + '</div></div>' +
+      }).join('') + '</div>' +
+      (subsHere.length ? '<div class="chips subchips">' + [''].concat(subsHere).map(function (s) {
+        return '<button type="button" class="chip sm' + (s === sub ? ' on' : '') + '" data-act="sub" data-sub="' + esc(s) + '">' + esc(s || 'Todo ' + cat) + '</button>';
+      }).join('') + '</div>' : '') + '</div>' +
       '<div class="cat-body">' + body + '</div>' +
       '</div>';
   }
@@ -630,7 +648,7 @@
       '<button class="x x-float" type="button" data-act="close-detail" aria-label="Cerrar">' + ic('x') + '</button>' +
       '<div class="detail-pic"><img src="' + esc(imgOf(p)) + '" alt="' + esc(p.name) + '">' + stockBadge(p) + '</div>' +
       '<div class="detail-body">' +
-      '<span class="card-cat">' + esc(p.cat) + '</span>' +
+      '<span class="card-cat">' + catLabel(p) + '</span>' +
       '<h2 style="font-size:28px">' + esc(p.name) + '</h2>' +
       (p.sku ? '<span class="pcode">Código ' + esc(p.sku) + '</span>' : '') +
       (p.desc ? '<p style="color:var(--ink-2);font-size:17px;white-space:pre-line">' + (p.combo ? '<b>Incluye:</b> ' : '') + esc(p.desc) + '</p>' : '') +
@@ -641,6 +659,7 @@
       '<div class="gain-box"><span>Ganás por unidad</span><b class="num">' + money(gain(p)) + '</b></div>' +
       qtyControl(p, true) +
       '<button class="share" type="button" data-act="share" data-id="' + esc(p.id) + '">' + ic('share', 16) + 'Imagen para compartir en mis estados</button>' +
+      '<a class="share" href="https://wa.me/?text=' + encodeURIComponent(p.name + ' por mayor en ' + cfg.brand.name + ': ' + location.origin + '/p/' + p.id) + '" target="_blank" rel="noopener">' + ic('wa', 16) + 'Pasarle este producto a otro feriante</a>' +
       ((cart[p.id] || 0) > 0 ? '<button class="btn btn-dark btn-sm" type="button" data-act="open-cart">Ver mi pedido</button>' : '') +
       '</div></div></div>';
   }
@@ -661,18 +680,6 @@
     return { ready: !!(t.count && !short && nameOk && phoneOk && zoneOk && addrOk && digits(cfg.contact.whatsapp)), hint: hint };
   }
   function orderRef() { return refName ? refCode : (cleanCode(buyer.ref) || (isSeller() && sellerCode ? sellerCode : '')); }
-  function orderMessage(code) {
-    var t = cartTotals(), ship = shippingCost(), envio = effMode() === 'envio';
-    var lines = cartLines().map(function (l) { return '• ' + l.q + ' x ' + (l.p.sku ? '[' + l.p.sku + '] ' : '') + l.p.name + ' (' + money(priceOf(l.p)) + ' c/u)' + (l.p.stock === 'order' ? ' · por encargo' : ''); });
-    var ref = orderRef();
-    return 'Hola ' + cfg.brand.name + '! Te mando mi pedido' + (code ? ' #' + code : '') + ':\n\n' + lines.join('\n') +
-      '\n\nProductos: ' + money(t.total) +
-      (envio ? '\nEnvío a ' + buyer.zone + ': ' + money(ship) + (shipOffPct() && shipBase() ? ' (beneficio nivel ' + myLevel().name + ')' : '') : '\nRetiro en el depósito') +
-      '\nTotal: ' + money(t.total + ship) +
-      '\n\nNombre: ' + (buyer.name || '') + '\nWhatsApp: ' + (buyer.phone || '') + (buyer.barrio ? '\nBarrio: ' + buyer.barrio : '') +
-      (envio ? '\nDirección: ' + (buyer.address || '') : '') +
-      (ref ? '\nVendedor: ' + ref : '');
-  }
   function deliveryFields() {
     if (!shipOn()) return '';
     var zones = cfg.shipping.zones, envio = effMode() === 'envio', z = zoneByName(buyer.zone);
@@ -915,7 +922,7 @@
     else if (!myOrders.length) ordersHtml = '<div class="empty">Todavía no hiciste pedidos con esta cuenta.<br>Los que hagas estando dentro van a aparecer acá, con su estado.<div class="ctas" style="justify-content:center;margin-top:14px"><a class="btn btn-main btn-sm" href="#catalogo" data-go="catalogo">Ver el catálogo</a></div></div>';
     else ordersHtml = '<div class="corders">' + myOrders.map(clientOrderCard).join('') + '</div>';
     var open = myOrders && !myOrders.error ? myOrders.filter(function (o) { return o.status !== 'entregado' && o.status !== 'cancelado'; }).length : 0;
-    return '<div class="wrap acct">' + head +
+    return '<div class="wrap acct">' + head + installCard('cuenta') +
       (user.emailVerified ? '' : verifyBox()) +
       (incomplete ? '<div class="panel panel-hl"><h2>Completá tus datos</h2><p>Así cada pedido sale con tu nombre y WhatsApp, y te avisamos cuando esté listo.</p>' + profileForm() + '</div>' : '') +
       '<div class="acct-grid"><div class="panel"><h2>Mis pedidos' + (open ? ' <span class="count num">' + open + ' en curso</span>' : '') + '</h2>' + ordersHtml + '</div>' +
@@ -971,7 +978,7 @@
     if (isAdmin()) {
       var nl = leads ? leads.filter(function (l) { return l.status === 'nuevo'; }).length : 0;
       list.splice(2, 0, ['vendedores', 'Vendedores'], ['contactos', 'Contactos' + (nl ? ' (' + nl + ')' : '')]);
-      list.push(['puntos', 'Puntos y niveles'], ['negocio', 'Datos y ajustes'], ['equipo', 'Equipo']);
+      list.push(['historial', 'Historial'], ['puntos', 'Puntos y niveles'], ['negocio', 'Datos y ajustes'], ['equipo', 'Equipo']);
     }
     return '<div class="tabs" role="tablist">' + list.map(function (t) {
       return '<button type="button" role="tab" aria-selected="' + (adminTab === t[0]) + '" class="tab' + (adminTab === t[0] ? ' on' : '') + '" data-act="tab" data-tab="' + t[0] + '">' + t[1] + '</button>';
@@ -986,6 +993,7 @@
     var body = adminTab === 'productos' ? productsAdmin()
       : adminTab === 'promos' ? promosAdmin()
       : adminTab === 'puntos' && isAdmin() ? pointsAdmin()
+      : adminTab === 'historial' && isAdmin() ? auditAdmin()
       : adminTab === 'clientes' ? resellersAdmin()
       : adminTab === 'vendedores' && isAdmin() ? sellersAdmin()
       : adminTab === 'negocio' && isAdmin() ? businessAdmin()
@@ -1146,7 +1154,7 @@
           '<div class="order-top"><b>#' + esc(o.code || o.id.slice(0, 6).toUpperCase()) + '</b><span class="num">' + when + '</span></div>' +
           '<div><b>' + esc(o.name) + '</b>' + (o.barrio ? ' · ' + esc(o.barrio) : '') + (o.phone ? '<br><span class="num" style="color:var(--ink-3);font-size:14px">' + esc(o.phone) + '</span>' : '') + '</div>' +
           '<div class="order-items">' + items + '</div>' +
-          deliveryLine(o) + sellerLine(o) +
+          priceCheck(o) + deliveryLine(o) + sellerLine(o) +
           '<div class="order-foot"><span class="num"><b>' + money(o.grand || o.total) + '</b>' + (o.shipping ? '<small class="ship-note"> incluye envío ' + money(o.shipping) + '</small>' : '') + '</span>' +
           '<select data-order="' + esc(o.id) + '" aria-label="Estado del pedido">' +
           Object.keys(STATUS).map(function (k) { return '<option value="' + k + '"' + (o.status === k ? ' selected' : '') + '>' + STATUS[k] + '</option>'; }).join('') +
@@ -1258,7 +1266,7 @@
   }
 
   /* ================= Excel: importar y exportar productos ================= */
-  var XCOLS = ['SKU', 'Nombre', 'Rubro', 'Precio revendedor', 'Precio sugerido', 'Unidades', 'Avisar cuando queden', 'Por encargo (si/no)', 'Destacado (si/no)', 'Descripción', 'Foto (link)'];
+  var XCOLS = ['SKU', 'Nombre', 'Rubro', 'Subrubro', 'Precio revendedor', 'Precio sugerido', 'Unidades', 'Avisar cuando queden', 'Por encargo (si/no)', 'Destacado (si/no)', 'Descripción', 'Foto (link)'];
   var importer = null; // { rows, news, upd, errs, busy }
   function loadScript(src, globalName) {
     return new Promise(function (res, rej) {
@@ -1273,10 +1281,10 @@
   function yes(v) { return /^(s|si|sí|x|1|true|yes)$/i.test(String(v || '').trim()); }
   function exportProducts(template) {
     loadXLSX().then(function (X) {
-      var rows = template ? [['SAB-2P-01', 'Juego de sábanas 2 plazas', (cfg.categories || ['Blanquería'])[0], 14500, 22000, 40, 10, 'no', 'si', 'Algodón, varios colores', '']]
-        : products.map(function (p) { return [p.sku || '', p.name, p.cat, Number(p.price) || 0, Number(p.sug) || 0, tracked(p) ? Number(p.qty) : '', Number(p.minQty) || '', p.stock === 'order' ? 'si' : 'no', p.featured ? 'si' : 'no', p.desc || '', /^https?:/.test(p.img || '') ? p.img : '']; });
+      var rows = template ? [['SAB-2P-01', 'Juego de sábanas 2 plazas', 'Blanquería', 'Sábanas', 14500, 22000, 40, 10, 'no', 'si', 'Algodón, varios colores', ''], ['MOC-URB-01', 'Mochila urbana', 'Marroquinería', 'Mochilas', 9000, 15000, 25, 5, 'no', 'no', '', '']]
+        : products.map(function (p) { return [p.sku || '', p.name, p.cat, p.sub || '', Number(p.price) || 0, Number(p.sug) || 0, tracked(p) ? Number(p.qty) : '', Number(p.minQty) || '', p.stock === 'order' ? 'si' : 'no', p.featured ? 'si' : 'no', p.desc || '', /^https?:/.test(p.img || '') ? p.img : '']; });
       var ws = X.utils.aoa_to_sheet([XCOLS].concat(rows));
-      ws['!cols'] = [14, 34, 18, 16, 16, 10, 12, 12, 12, 40, 30].map(function (w) { return { wch: w }; });
+      ws['!cols'] = [14, 34, 16, 20, 16, 16, 10, 12, 12, 12, 40, 30].map(function (w) { return { wch: w }; });
       var wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'Productos');
       X.writeFile(wb, template ? 'plantilla-productos-el-galpon.xlsx' : 'productos-el-galpon-' + todayStr() + '.xlsx');
     }).catch(function () { setToast('No se pudo cargar la herramienta de Excel. Revisá la conexión.'); });
@@ -1288,7 +1296,7 @@
       var aoa = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
       var head = (aoa[0] || []).map(function (h) { return String(h).trim().toLowerCase(); });
       var col = function (name) { var n = name.toLowerCase(); for (var i = 0; i < head.length; i++) if (head[i].indexOf(n) === 0) return i; return -1; };
-      var C = { sku: col('sku'), name: col('nombre'), cat: col('rubro'), price: col('precio revendedor'), sug: col('precio sugerido'), qty: col('unidades'), min: col('avisar'), order: col('por encargo'), feat: col('destacado'), desc: col('descrip'), img: col('foto') };
+      var C = { sku: col('sku'), name: col('nombre'), cat: col('rubro'), sub: col('subrubro'), price: col('precio revendedor'), sug: col('precio sugerido'), qty: col('unidades'), min: col('avisar'), order: col('por encargo'), feat: col('destacado'), desc: col('descrip'), img: col('foto') };
       if (C.name < 0 || C.price < 0) { setToast('No encontré las columnas “Nombre” y “Precio revendedor”. Usá la plantilla.'); return; }
       var cats = cfg.categories || [], out = [], seen = {};
       aoa.slice(1).forEach(function (row, i) {
@@ -1297,8 +1305,10 @@
         var r = { line: i + 2, sku: cleanSku(g('sku')), name: name, cat: String(g('cat')).trim(), price: xnum(g('price')), sug: xnum(g('sug')),
           qty: String(g('qty')).trim() === '' ? null : Math.max(0, Math.round(Number(g('qty')) || 0)), minQty: Math.max(0, Math.round(Number(g('min')) || 0)),
           order: yes(g('order')), featured: yes(g('feat')), desc: String(g('desc')).trim(), img: String(g('img')).trim(), errs: [] };
-        var match = cats.filter(function (c) { return c.toLowerCase() === r.cat.toLowerCase(); })[0];
-        if (match) r.cat = match; else if (r.cat) r.newCat = true; else r.cat = cats[0] || 'Varios';
+        r.sub = String(g('sub')).trim();
+        var rc = resolveCat(r.cat);
+        if (rc) { r.cat = rc[0]; if (!r.sub) r.sub = rc[1]; } else if (r.cat) r.newCat = true; else r.cat = cats[0] || 'Varios';
+        if (r.sub) { var sm = subsOf(r.cat).filter(function (x) { return norm(x) === norm(r.sub); })[0]; if (sm) r.sub = sm; else r.newSub = true; }
         if (!r.name) r.errs.push('falta el nombre');
         if (!(r.price > 0)) r.errs.push('falta el precio');
         if (r.sug && r.sug <= r.price) r.errs.push('sugerido menor al precio');
@@ -1324,7 +1334,7 @@
       '<p class="hint">Los productos nuevos sin foto se publican con una foto genérica: después les sacás la foto desde la lista. En los que ya existen, se mantiene la foto si la planilla no trae una.</p>' +
       '<div class="imp-table"><table><thead><tr><th>Fila</th><th>SKU</th><th>Nombre</th><th>Rubro</th><th class="num">Precio</th><th class="num">Unid.</th><th>Estado</th></tr></thead><tbody>' +
       rows.slice(0, 300).map(function (r) {
-        return '<tr class="' + (r.errs.length ? 'err' : '') + '"><td class="num">' + r.line + '</td><td>' + esc(r.sku || '—') + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.cat) + '</td><td class="num">' + money(r.price) + '</td><td class="num">' + (r.qty === null ? '—' : r.qty) + '</td><td>' +
+        return '<tr class="' + (r.errs.length ? 'err' : '') + '"><td class="num">' + r.line + '</td><td>' + esc(r.sku || '—') + '</td><td>' + esc(r.name) + '</td><td>' + esc(r.cat) + (r.sub ? ' › ' + esc(r.sub) : '') + '</td><td class="num">' + money(r.price) + '</td><td class="num">' + (r.qty === null ? '—' : r.qty) + '</td><td>' +
           (r.errs.length ? '<b class="bad">' + esc(r.errs.join(', ')) + '</b>' : r.target ? 'Actualiza' : 'Nuevo') + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
       '<div class="edit-actions"><span style="flex:1"></span><button class="btn btn-line btn-sm" type="button" data-act="close-import">Cancelar</button>' +
@@ -1336,10 +1346,13 @@
     var ok = importer.rows.filter(function (r) { return !r.errs.length; });
     importer.busy = true; render(true);
     var minOrder = products.reduce(function (m, x) { return Math.min(m, typeof x.order === 'number' ? x.order : 0); }, 0);
+    var sc = clone(cfg.subcats || {}), subsChanged = false;
+    ok.forEach(function (r) { if (r.sub) { sc[r.cat] = sc[r.cat] || []; if (sc[r.cat].indexOf(r.sub) === -1) { sc[r.cat].push(r.sub); subsChanged = true; } } });
+    var prevSc = cfg.subcats; cfg.subcats = sc;
     var docs = ok.map(function (r, i) {
       var base = r.target ? Object.assign({}, r.target) : { id: fb.db.collection('products').doc().id, order: minOrder - ok.length + i, combo: false, offer: 0, offerUntil: '', img: '' };
       var stockMode = r.order ? 'order' : (base.stock === 'order' ? 'ok' : (base.stock || 'ok'));
-      var p = Object.assign(base, { sku: r.sku || base.sku || '', name: r.name, cat: r.cat, price: r.price, sug: r.sug || base.sug || 0, qty: r.order ? null : r.qty, minQty: r.minQty, stock: stockMode, featured: r.featured, desc: r.desc || base.desc || '' });
+      var p = Object.assign(base, { sku: r.sku || base.sku || '', name: r.name, cat: r.cat, sub: r.sub || '', price: r.price, sug: r.sug || base.sug || 0, qty: r.order ? null : r.qty, minQty: r.minQty, stock: stockMode, featured: r.featured, desc: r.desc || base.desc || '' });
       if (r.img) p.img = r.img;
       if (!p.img) p.img = (cfg.images && cfg.images.depB) || '';
       if (r.order) p.leadDays = p.leadDays || 7;
@@ -1349,13 +1362,78 @@
     var chunks = []; for (var i = 0; i < docs.length; i += 400) chunks.push(docs.slice(i, i + 400));
     var run = chunks.reduce(function (pr, ch) {
       return pr.then(function () { var b = fb.db.batch(); ch.forEach(function (d) { var x = Object.assign({}, d); delete x.id; b.set(fb.db.collection('products').doc(d.id), x); }); return b.commit(); });
-    }, newCats.length && isAdmin() ? fb.db.collection('site').doc('main').update({ categories: (cfg.categories || []).concat(newCats) }).then(function () { cfg.categories = (cfg.categories || []).concat(newCats); }) : Promise.resolve());
+    }, (newCats.length || subsChanged) && isAdmin() ? fb.db.collection('site').doc('main').update({ categories: (cfg.categories || []).concat(newCats), subcats: sc }).then(function () { cfg.categories = (cfg.categories || []).concat(newCats); if (cfgDraft) { cfgDraft.categories = cfg.categories.slice(); cfgDraft.subcats = clone(sc); } }) : Promise.resolve().then(function () { if (!isAdmin()) cfg.subcats = prevSc; }));
     run.then(function () {
+      logAudit('importar', importer.file + ': ' + docs.length + ' productos');
       docs.forEach(function (d) { var i2 = -1; products.forEach(function (p, k) { if (p.id === d.id) i2 = k; }); if (i2 >= 0) products[i2] = d; else products.unshift(d); });
       importer = null; setToast(docs.length + ' productos importados.');
     }).catch(function (e) { importer.busy = false; setToast(e && e.code === 'permission-denied' ? 'Sin permiso para guardar productos.' : 'Se cortó la importación. Revisá y probá de nuevo: lo que ya entró no se duplica.'); });
   }
 
+  /* ================= subrubros ================= */
+  var SUGGESTED_TREE = [
+    ['Bazar', ['Tappers y herméticos', 'Vasos y jarras', 'Platos y bowls', 'Cubiertos y utensilios', 'Tablas de cortar', 'Frascos y especieros', 'Ollas y sartenes', 'Termos y mates', 'Descartables']],
+    ['Hogar', ['Limpieza', 'Organización y orden', 'Baño', 'Decoración', 'Iluminación', 'Plantas y jardín', 'Ferretería liviana']],
+    ['Tecnología', ['Cargadores y cables', 'Auriculares', 'Parlantes', 'Accesorios para celular', 'Luces LED', 'Pilas y linternas', 'Relojes y smartwatch']],
+    ['Marroquinería', ['Billeteras', 'Mochilas', 'Riñoneras', 'Bolsos y carteras', 'Cinturones', 'Valijas y bolsos de viaje', 'Neceseres']],
+    ['Blanquería', ['Sábanas', 'Toallas y toallones', 'Acolchados y frazadas', 'Almohadas', 'Manteles y repasadores', 'Cortinas', 'Alfombras']]
+  ];
+  // nombres viejos (rubros sueltos) → rubro y subrubro nuevos
+  var LEGACY_MAP = { 'tappers': ['Bazar', 'Tappers y herméticos'], 'vasos plasticos': ['Bazar', 'Vasos y jarras'], 'vasos de vidrio': ['Bazar', 'Vasos y jarras'], 'vasos termicos': ['Bazar', 'Vasos y jarras'],
+    'tablas de cortar': ['Bazar', 'Tablas de cortar'], 'frascos de vidrio': ['Bazar', 'Frascos y especieros'], 'cocina': ['Bazar', 'Ollas y sartenes'], 'tecno economica': ['Tecnología', ''], 'tecnologia': ['Tecnología', ''],
+    'blanqueria': ['Blanquería', ''], 'bazar': ['Bazar', ''], 'hogar': ['Hogar', ''], 'marroquineria': ['Marroquinería', ''], 'termos y mates': ['Bazar', 'Termos y mates'] };
+  var sub = '';
+  function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+  function subsOf(c) { return ((cfg && cfg.subcats) || {})[c] || []; }
+  function sortBySub(list, c) { var S = subsOf(c); return list.slice().sort(function (a, b) { var ia = S.indexOf(a.sub), ib = S.indexOf(b.sub); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib); }); }
+  function catLabel(p) { return esc(p.cat || '') + (p.sub ? ' · ' + esc(p.sub) : ''); }
+  // busca un rubro o subrubro por nombre (para Excel y migración)
+  function resolveCat(name) {
+    var n = norm(name); if (!n) return null;
+    var mains = cfg.categories || [];
+    for (var i = 0; i < mains.length; i++) if (norm(mains[i]) === n) return [mains[i], ''];
+    for (var j = 0; j < mains.length; j++) { var S = subsOf(mains[j]); for (var k = 0; k < S.length; k++) if (norm(S[k]) === n) return [mains[j], S[k]]; }
+    return null;
+  }
+  // Guarda subrubros de un rubro (y renombra o mueve productos si hace falta)
+  function saveSubs(mainName, nextSubs, remapSub, done) {
+    var sc = clone(cfg.subcats || {}); sc[mainName] = nextSubs;
+    var touched = products.filter(function (p) { return p.cat === mainName && remapSub && remapSub[p.sub] !== undefined; });
+    var b = fb.db.batch();
+    b.update(fb.db.collection('site').doc('main'), { subcats: sc });
+    touched.slice(0, 450).forEach(function (p) { b.update(fb.db.collection('products').doc(p.id), { sub: remapSub[p.sub] }); });
+    if (catMgr) catMgr.busy = true; render(true);
+    b.commit().then(function () {
+      touched.forEach(function (p) { p.sub = remapSub[p.sub]; });
+      cfg.subcats = sc; if (cfgDraft) cfgDraft.subcats = clone(sc);
+      if (catMgr) { catMgr.busy = false; catMgr.subEdit = null; }
+      if (done) done(); render(true);
+    }).catch(function () { if (catMgr) catMgr.busy = false; setToast('No se pudo guardar el subrubro.'); });
+  }
+  // Pasa a la estructura sugerida: 5 rubros con sus subrubros, y reubica los productos existentes
+  function applySuggestedTree() {
+    var mains = SUGGESTED_TREE.map(function (t) { return t[0]; }), sc = {};
+    SUGGESTED_TREE.forEach(function (t) { sc[t[0]] = t[1].slice(); });
+    var keep = (cfg.categories || []).filter(function (c) { return !LEGACY_MAP[norm(c)] && mains.indexOf(c) === -1; });
+    mains = mains.concat(keep); keep.forEach(function (c) { sc[c] = subsOf(c); });
+    var moves = [];
+    products.forEach(function (p) {
+      var m = LEGACY_MAP[norm(p.cat)];
+      if (m && (p.cat !== m[0] || (m[1] && p.sub !== m[1]))) moves.push([p, m[0], m[1] || p.sub || '']);
+    });
+    var byCat = clone((cfg.commissions && cfg.commissions.byCat) || {}), nb = {};
+    Object.keys(byCat).forEach(function (k) { var m = LEGACY_MAP[norm(k)], to = m ? m[0] : k; if (mains.indexOf(to) !== -1 && nb[to] === undefined) nb[to] = byCat[k]; });
+    var ops = [function (b) { b.update(fb.db.collection('site').doc('main'), { categories: mains, subcats: sc, 'commissions.byCat': nb }); }];
+    moves.forEach(function (x) { ops.push(function (b) { b.update(fb.db.collection('products').doc(x[0].id), { cat: x[1], sub: x[2] }); }); });
+    var chunks = []; for (var i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
+    catMgr.busy = true; render(true);
+    chunks.reduce(function (pr, ch) { return pr.then(function () { var b = fb.db.batch(); ch.forEach(function (f) { f(b); }); return b.commit(); }); }, Promise.resolve()).then(function () {
+      moves.forEach(function (x) { x[0].cat = x[1]; x[0].sub = x[2]; });
+      cfg.categories = mains; cfg.subcats = sc; cfg.commissions.byCat = nb;
+      if (cfgDraft) { cfgDraft.categories = mains.slice(); cfgDraft.subcats = clone(sc); cfgDraft.commissions.byCat = clone(nb); }
+      catMgr.busy = false; render(true); showToast('Listo: ' + mains.length + ' rubros con sus subrubros' + (moves.length ? ', ' + moves.length + ' productos reubicados.' : '.'));
+    }).catch(function () { catMgr.busy = false; setToast('No se pudo aplicar la estructura.'); });
+  }
   /* ================= rubros (categorías) ================= */
   var catMgr = null; // { edit: idx, editVal, newVal, del: idx, moveTo, busy }
   function catCount(c) { return products.filter(function (p) { return p.cat === c; }).length; }
@@ -1370,14 +1448,17 @@
     Object.keys(byCat).forEach(function (k) { if (remap[k] === undefined && next.indexOf(k) !== -1) nb[k] = byCat[k]; });
     Object.keys(remap).forEach(function (k) { var to = remap[k]; if (byCat[k] !== undefined && (cfg.categories || []).indexOf(to) === -1 && next.indexOf(to) !== -1) nb[to] = byCat[k]; });
     var touched = products.filter(function (p) { return remap[p.cat] !== undefined; });
-    var ops = [function (b) { b.update(fb.db.collection('site').doc('main'), { categories: next, 'commissions.byCat': nb }); }];
-    touched.forEach(function (p) { ops.push(function (b) { b.update(fb.db.collection('products').doc(p.id), { cat: remap[p.cat] }); }); });
+    var sc0 = (cfg && cfg.subcats) || {}, sc = {};
+    next.forEach(function (c) { var from = Object.keys(remap).filter(function (k) { return remap[k] === c && (cfg.categories || []).indexOf(c) === -1; })[0]; sc[c] = (sc0[c] || (from ? sc0[from] : null) || []).slice(); });
+    var newSub = function (p) { var to = remap[p.cat]; return sc[to] && sc[to].indexOf(p.sub) !== -1 ? p.sub : ''; };
+    var ops = [function (b) { b.update(fb.db.collection('site').doc('main'), { categories: next, subcats: sc, 'commissions.byCat': nb }); }];
+    touched.forEach(function (p) { ops.push(function (b) { b.update(fb.db.collection('products').doc(p.id), { cat: remap[p.cat], sub: newSub(p) }); }); });
     var chunks = []; for (var i = 0; i < ops.length; i += 400) chunks.push(ops.slice(i, i + 400));
     if (catMgr) catMgr.busy = true; render(true);
     chunks.reduce(function (pr, ch) { return pr.then(function () { var b = fb.db.batch(); ch.forEach(function (f) { f(b); }); return b.commit(); }); }, Promise.resolve()).then(function () {
-      touched.forEach(function (p) { p.cat = remap[p.cat]; });
+      touched.forEach(function (p) { p.sub = newSub(p); p.cat = remap[p.cat]; });
       Object.keys(remap).forEach(function (k) { if (cat === k) cat = remap[k] || 'Todo'; });
-      cfg.categories = next.slice(); cfg.commissions = cfg.commissions || clone(COMM_DEFAULT); cfg.commissions.byCat = nb;
+      cfg.categories = next.slice(); cfg.subcats = sc; if (cfgDraft) cfgDraft.subcats = clone(sc); cfg.commissions = cfg.commissions || clone(COMM_DEFAULT); cfg.commissions.byCat = nb;
       if (cfgDraft) { cfgDraft.categories = next.slice(); cfgDraft.commissions = cfgDraft.commissions || {}; cfgDraft.commissions.byCat = clone(nb); }
       if (catMgr) { catMgr.busy = false; catMgr.edit = -1; catMgr.del = -1; }
       if (done) done();
@@ -1398,17 +1479,25 @@
       '<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="font-size:22px">Rubros</h2><button class="x" type="button" data-act="close-cats" aria-label="Cerrar">' + ic('x') + '</button></div>' +
       '<p class="hint">El orden de esta lista es el orden de los bloques del catálogo, de los filtros y del catálogo en PDF. Si renombrás un rubro, sus productos se actualizan solos.</p>' +
       (admin ? '<form class="cat-add" id="cat-add-form"><input id="cat-new" maxlength="40" placeholder="Nuevo rubro, ej: Termos y mates" value="' + esc(m.newVal || '') + '" aria-label="Nombre del nuevo rubro"><button class="btn btn-main btn-sm" type="submit"' + (m.busy ? ' disabled' : '') + '>' + ic('plus', 18) + 'Agregar</button></form>' : '<p class="hint">Solo un administrador puede cambiar los rubros.</p>') +
+      (admin && !SUGGESTED_TREE.every(function (t) { return cats.indexOf(t[0]) !== -1; }) ? '<div class="admin-note">' + ic('info', 20) + '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start"><span><b>Estructura sugerida:</b> Bazar, Hogar, Tecnología, Marroquinería y Blanquería, cada uno con sus subrubros (tappers, limpieza, cargadores, billeteras, sábanas…). Los productos que ya cargaste se reubican solos.</span><button class="btn btn-main btn-sm" type="button" data-act="cat-tree"' + (m.busy ? ' disabled' : '') + '>Usar la estructura sugerida</button></div></div>' : '') +
       '<ol class="cat-list">' + cats.map(function (c, i) {
         var n = catCount(c);
         if (m.edit === i) return '<li class="editing"><input id="cat-edit" maxlength="40" value="' + esc(m.editVal) + '" aria-label="Nuevo nombre de ' + esc(c) + '"><div class="cat-acts"><button class="btn btn-main btn-sm" type="button" data-act="cat-rename" data-i="' + i + '"' + (m.busy ? ' disabled' : '') + '>Guardar</button><button class="linkbtn" type="button" data-act="cat-cancel">Cancelar</button></div></li>';
         if (m.del === i) return '<li class="deleting"><div><b>¿Eliminar “' + esc(c) + '”?</b>' + (n ? '<label class="cat-move">Pasar sus ' + n + ' productos a <select id="cat-move">' + cats.filter(function (x) { return x !== c; }).map(function (x) { return '<option' + (x === m.moveTo ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></label>' : '<small>No tiene productos.</small>') + '</div>' +
           '<div class="cat-acts"><button class="btn btn-sm btn-danger" type="button" data-act="cat-del-ok" data-i="' + i + '"' + (m.busy || (n && cats.length < 2) ? ' disabled' : '') + '>Eliminar</button><button class="linkbtn" type="button" data-act="cat-cancel">Cancelar</button></div></li>';
-        return '<li><span class="cat-name"><b>' + esc(c) + '</b><small class="num">' + n + ' producto' + (n === 1 ? '' : 's') + '</small></span>' +
+        var S = subsOf(c), open = m.open === c;
+        var subPanel = open ? '<li class="sub-panel">' + (S.length ? '<div class="sub-list">' + S.map(function (x, k) {
+            var nx = products.filter(function (p) { return p.cat === c && p.sub === x; }).length;
+            if (m.subEdit && m.subEdit.main === c && m.subEdit.sub === x) return '<div class="sub-item editing"><input id="sub-edit" maxlength="40" value="' + esc(m.subEdit.val) + '"><button class="btn btn-main btn-sm" type="button" data-act="sub-ren-ok">Guardar</button></div>';
+            return '<div class="sub-item"><span>' + esc(x) + ' <small class="num">' + nx + '</small></span>' + (admin ? '<span class="cat-acts"><button class="icon-btn sm" type="button" data-act="sub-up" data-main="' + esc(c) + '" data-i="' + k + '" aria-label="Subir ' + esc(x) + '"' + (k === 0 ? ' disabled' : '') + '>↑</button><button class="icon-btn sm" type="button" data-act="sub-ren" data-main="' + esc(c) + '" data-sub="' + esc(x) + '" aria-label="Renombrar ' + esc(x) + '">' + ic('edit', 14) + '</button><button class="linkbtn" type="button" data-act="sub-del" data-main="' + esc(c) + '" data-sub="' + esc(x) + '">Quitar</button></span>' : '') + '</div>';
+          }).join('') + '</div>' : '<p class="hint">Todavía no tiene subrubros.</p>') +
+          (admin ? '<div class="cat-add"><input id="subnew-' + catSlug(c) + '" maxlength="40" placeholder="Nuevo subrubro de ' + esc(c) + '"><button class="btn btn-dark btn-sm" type="button" data-act="sub-add" data-main="' + esc(c) + '">Agregar</button></div>' : '') + '</li>' : '';
+        return '<li><span class="cat-name"><b>' + esc(c) + '</b><small class="num">' + n + ' producto' + (n === 1 ? '' : 's') + ' · <button type="button" class="linkbtn sm" data-act="cat-open" data-main="' + esc(c) + '">' + S.length + ' subrubro' + (S.length === 1 ? '' : 's') + (open ? ' ▲' : ' ▼') + '</button></small></span>' +
           (admin ? '<div class="cat-acts">' +
             '<button class="icon-btn" type="button" data-act="cat-up" data-i="' + i + '" aria-label="Subir ' + esc(c) + '"' + (i === 0 || m.busy ? ' disabled' : '') + '>↑</button>' +
             '<button class="icon-btn" type="button" data-act="cat-down" data-i="' + i + '" aria-label="Bajar ' + esc(c) + '"' + (i === cats.length - 1 || m.busy ? ' disabled' : '') + '>↓</button>' +
             '<button class="icon-btn" type="button" data-act="cat-edit" data-i="' + i + '" aria-label="Renombrar ' + esc(c) + '">' + ic('edit', 16) + '</button>' +
-            '<button class="icon-btn" type="button" data-act="cat-del" data-i="' + i + '" aria-label="Eliminar ' + esc(c) + '">' + ic('x', 16) + '</button></div>' : '') + '</li>';
+            '<button class="icon-btn" type="button" data-act="cat-del" data-i="' + i + '" aria-label="Eliminar ' + esc(c) + '">' + ic('x', 16) + '</button></div>' : '') + '</li>' + subPanel;
       }).join('') + '</ol>' +
       (orphan ? '<p class="hint warn">' + orphan + ' producto' + (orphan > 1 ? 's tienen' : ' tiene') + ' un rubro que no está en la lista: aparecen en “Otros” del catálogo. Editalos para asignarles uno.</p>' : '') +
       '</div></div>';
@@ -1435,6 +1524,8 @@
       '<div class="wide pe-gain num" id="e-gain">Ganancia del revendedor: ' + money(gain(p)) + '</div>' +
       '<div class="fld"><label for="e-cat">Rubro</label><select id="e-cat" data-e="cat">' + opts + (isAdmin() ? '<option value="__new">+ Crear rubro nuevo…</option>' : '') + '</select>' +
         (p._newCat ? '<div class="cat-add"><input id="e-newcat" maxlength="40" placeholder="Nombre del rubro" value="' + esc(p._newCatVal || '') + '" aria-label="Nombre del rubro nuevo"><button class="btn btn-dark btn-sm" type="button" data-act="e-cat-create">Crear</button></div>' : '') + '</div>' +
+      '<div class="fld"><label for="e-sub">Subrubro</label><select id="e-sub" data-e="sub"><option value="">Sin subrubro</option>' + subsOf(p.cat).map(function (x) { return '<option' + (x === p.sub ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + (isAdmin() ? '<option value="__newsub">+ Crear subrubro…</option>' : '') + '</select>' +
+        (p._newSub ? '<div class="cat-add"><input id="e-newsub" maxlength="40" placeholder="Nombre del subrubro" value="' + esc(p._newSubVal || '') + '" aria-label="Nombre del subrubro nuevo"><button class="btn btn-dark btn-sm" type="button" data-act="e-sub-create">Crear</button></div>' : '') + '</div>' +
       '<div class="fld"><label for="e-stock">Stock</label><select id="e-stock" data-e="stock">' +
       '<option value="ok"' + (p.stock === 'ok' ? ' selected' : '') + '>Hay stock</option>' +
       '<option value="low"' + (p.stock === 'low' ? ' selected' : '') + '>Últimas unidades</option>' +
@@ -1573,6 +1664,99 @@
       clientsMap = clientsMap || {}; clientsMap[ph] = Object.assign({}, cur || {}, d);
     }).catch(function () {});
   }
+  /* ================= seguridad y operación: App Check, errores, historial, copias ================= */
+  var APP_VERSION = '2026.10.17';
+  var appCheck = null;
+  function initAppCheck() {
+    var k = window.GALPON_APPCHECK_KEY;
+    if (!k || !window.firebase || !window.firebase.appCheck) return;
+    try { appCheck = window.firebase.appCheck(); appCheck.activate(new window.firebase.appCheck.ReCaptchaV3Provider(k), true); } catch (e) { appCheck = null; }
+  }
+  function appCheckToken() { return appCheck ? appCheck.getToken(false).then(function (r) { return r.token; }).catch(function () { return null; }) : Promise.resolve(null); }
+  var errSent = 0;
+  function reportError(msg, where, stack) {
+    msg = String(msg || ''); if (!msg || errSent >= 5 || /ResizeObserver|^Script error\.?$|extension:\/\//.test(msg + ' ' + where)) return;
+    errSent++;
+    try { fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ msg: msg, where: where || '', stack: String(stack || '').slice(0, 1500), url: location.pathname + location.hash, v: APP_VERSION, user: role || '' }), keepalive: true }).catch(function () {}); } catch (e) {}
+  }
+  window.addEventListener('error', function (e) { reportError(e.message, (e.filename || '').split('/').pop() + ':' + (e.lineno || ''), e.error && e.error.stack); });
+  window.addEventListener('unhandledrejection', function (e) { var r = e.reason; reportError('Promesa sin manejar: ' + (r && (r.message || r.code) || r), '', r && r.stack); });
+  // historial: queda registrado quién cambió qué (precios, estados, liquidaciones, ajustes)
+  function logAudit(action, detail, extra) {
+    if (!fb || !user || !(isStaff())) return;
+    fb.db.collection('audit').add(Object.assign({ at: Date.now(), by: String(user.email || '').toLowerCase(), action: action, detail: String(detail || '').slice(0, 300) }, extra || {})).catch(function () {});
+  }
+  var auditList = null, errList = null, auditFilter = '';
+  function loadAudit() {
+    if (!isAdmin()) return;
+    fb.db.collection('audit').orderBy('at', 'desc').limit(300).get().then(function (s) { auditList = s.docs.map(function (d) { return d.data(); }); render(true); }).catch(function () { auditList = []; render(true); });
+    fb.db.collection('errors').orderBy('last', 'desc').limit(50).get().then(function (s) { errList = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }); render(true); }).catch(function () { errList = []; });
+  }
+  var AUDIT_NAME = { estado: 'Estado de pedido', asignar: 'Vendedor de pedido', producto: 'Producto', precio: 'Precio', stock: 'Stock', borrar: 'Producto eliminado', liquidacion: 'Liquidación', ajustes: 'Datos y ajustes', equipo: 'Equipo', vendedor: 'Vendedor', importar: 'Importación Excel', puntos: 'Puntos', sorteo: 'Sorteo', rubros: 'Rubros', pago: 'Pago' };
+  function auditAdmin() {
+    if (auditList === null) { auditList = false; loadAudit(); }
+    var list = (auditList || []).filter(function (a) { return !auditFilter || a.action === auditFilter; });
+    var kinds = []; (auditList || []).forEach(function (a) { if (kinds.indexOf(a.action) === -1) kinds.push(a.action); });
+    return '<div class="panel"><div class="sec-row" style="margin:0"><h2>Historial de cambios</h2><button class="btn btn-line btn-sm" type="button" data-act="audit-reload">Actualizar</button></div>' +
+      '<p class="hint">Quién cambió qué y cuándo. No se puede editar ni borrar.</p>' +
+      (kinds.length ? '<div class="chips">' + [''].concat(kinds).map(function (k) { return '<button type="button" class="chip sm' + (auditFilter === k ? ' on' : '') + '" data-act="audit-f" data-f="' + esc(k) + '">' + esc(k ? (AUDIT_NAME[k] || k) : 'Todo') + '</button>'; }).join('') + '</div>' : '') +
+      (auditList === false ? '<p>Cargando…</p>' : list.length ? '<div class="audit-list">' + list.map(function (a) {
+        var d = new Date(Number(a.at) || 0);
+        return '<div class="audit-row"><span class="num">' + d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</span><b>' + esc(AUDIT_NAME[a.action] || a.action) + (a.order ? ' #' + esc(a.order) : '') + '</b><span>' + esc(a.detail || '') + '</span><small>' + esc(a.by || '') + '</small></div>';
+      }).join('') + '</div>' : '<div class="empty">Todavía no hay cambios registrados.</div>') + '</div>' +
+      '<div class="panel"><h2>Errores de la web</h2><p class="hint">Si algo falla en el celular de un cliente, aparece acá (agrupado y con la cantidad de veces). Pasáselo a quien mantenga el sitio.</p>' +
+      (errList === null ? '<p>Cargando…</p>' : errList.length ? '<div class="audit-list">' + errList.map(function (x) { var d = new Date(Number(x.last) || 0); return '<div class="audit-row err"><span class="num">' + d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + '</span><b>' + esc(x.msg) + '</b><span>' + esc(x.where || '') + ' · ' + esc(x.url || '') + '</span><small class="num">' + (x.count || 1) + ' vez/veces · v' + esc(x.v || '') + '</small></div>'; }).join('') + '</div>' : '<p class="hint">' + ic('check', 14) + ' Sin errores registrados.</p>') + '</div>' +
+      '<div class="panel"><h2>Copia de seguridad</h2><p>Descargá una copia completa de los datos (productos, pedidos, clientes, vendedores, ajustes…) en un archivo. Guardala en tu compu o en Drive una vez por semana, además de las copias automáticas de Firebase (ver README).</p>' +
+      '<div class="ctas"><button class="btn btn-dark btn-sm" type="button" data-act="backup">Descargar copia completa</button></div></div>';
+  }
+  function exportAll(btn) {
+    var cols = ['site', 'products', 'orders', 'clients', 'customers', 'sellers', 'codes', 'payouts', 'leads', 'team', 'pointlog', 'draws', 'resellers', 'stats', 'audit'];
+    btn.disabled = true; btn.textContent = 'Preparando…';
+    var out = { exportedAt: new Date().toISOString(), version: APP_VERSION, collections: {} };
+    cols.reduce(function (pr, c) {
+      return pr.then(function () { return fb.db.collection(c).get().then(function (s) { var m = {}; s.docs.forEach(function (d) { m[d.id] = d.data(); }); out.collections[c] = m; }).catch(function () { out.collections[c] = { _error: 'sin permiso' }; }); });
+    }, Promise.resolve()).then(function () {
+      var json = JSON.stringify(out, function (k, v) { return v && typeof v === 'object' && typeof v.toDate === 'function' ? v.toDate().toISOString() : v; }, 1);
+      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = 'el-galpon-copia-' + todayStr() + '.json';
+      document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      btn.disabled = false; btn.textContent = 'Descargar copia completa';
+      var n = Object.keys(out.collections).reduce(function (t, c) { return t + Object.keys(out.collections[c]).length; }, 0);
+      showToast('Copia descargada: ' + n + ' registros.');
+      logAudit('ajustes', 'Descargó una copia completa (' + n + ' registros)');
+    });
+  }
+  // pedidos sin verificar por el servidor: avisa si algún precio no coincide con el catálogo
+  function priceCheck(o) {
+    if (o.verified) return '<span class="ver ok">' + ic('check', 14) + 'Precios verificados</span>';
+    var bad = (o.items || []).filter(function (i) { var p = prodById(i.id); return p && Math.abs(Number(i.price) - priceOf(p)) > 0.5 && Math.abs(Number(i.price) - Number(p.price)) > 0.5; });
+    return bad.length ? '<span class="ver bad">' + ic('info', 14) + 'Precio distinto al catálogo: ' + bad.map(function (i) { return esc(i.name) + ' ' + money(i.price) + ' (hoy ' + money(priceOf(prodById(i.id))) + ')'; }).join(', ') + '</span>' : '';
+  }
+  /* ================= app instalable (PWA) y modo sin señal ================= */
+  var installEvt = null, isStandalone = false, offline = !navigator.onLine;
+  try { isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) {}
+  var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; render(true); });
+  window.addEventListener('appinstalled', function () { installEvt = null; isStandalone = true; logAudit('ajustes', 'App instalada'); render(true); });
+  window.addEventListener('online', function () { offline = false; render(true); showToast('Volvió la conexión.'); });
+  window.addEventListener('offline', function () { offline = true; render(true); });
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost') && !/[?&]nosw=1/.test(location.search)) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); });
+  }
+  function installDismissed() { try { return Number(localStorage.getItem('galpon-install-x') || 0) > Date.now(); } catch (e) { return false; } }
+  function installCard(ctx) {
+    if (isStandalone || installDismissed() || (!installEvt && !isIOS)) return '';
+    return '<div class="install-card">' + '<img src="/icons/icon-192.png" alt="" width="48" height="48">' +
+      '<div><b>Instalá El Galpón en tu celular</b><span>' + (installEvt ? 'Abrís el catálogo con un toque, como una app, y funciona aunque haya poca señal.' : 'En el iPhone: tocá Compartir y después “Agregar a inicio”.') + '</span></div>' +
+      (installEvt ? '<button class="btn btn-main btn-sm" type="button" data-act="install">Instalar</button>' : '') +
+      '<button class="x sm" type="button" data-act="install-x" aria-label="Ahora no">' + ic('x', 16) + '</button></div>';
+  }
+  function offlineBar() { return offline ? '<div class="offline-bar">' + ic('info', 16) + 'Sin conexión: estás viendo el catálogo guardado. Para enviar el pedido necesitás señal.</div>' : ''; }
+  // vendedor: armar un pedido para uno de sus clientes en segundos
+  function sellerOrderFor(c) {
+    buyer.name = c.name || ''; buyer.phone = c.phone ? fmtPhone(c.phone) : ''; buyer.barrio = c.barrio || ''; buyer.ref = sellerCode || buyer.ref;
+    persistCart(); catMode = 'list'; cart = {}; persistCart();
+    go('catalogo'); showToast('Armando un pedido para ' + String(c.name || '').split(' ')[0] + '. Al enviarlo queda a tu nombre.');
+  }
   /* ================= servidor: WhatsApp automático y Mercado Pago ================= */
   var PAY_DEFAULT = { enabled: false, mode: 'total', pct: 30, when: 'confirmado' };
   var server = { loaded: false, wa: false, mp: false, admin: false };
@@ -1625,7 +1809,7 @@
   function payManual(o, a) {
     if (a.getAttribute('data-confirm') !== '1') { a.setAttribute('data-confirm', '1'); a.textContent = '¿Confirmás que ya cobraste ' + money(o.grand || o.total) + '? Tocá de nuevo'; return; }
     var pay = { status: 'aprobado', method: 'manual', amount: Number(o.grand || o.total) || 0, at: Date.now(), by: user.email };
-    fb.db.collection('orders').doc(o.id).update({ payment: pay }).then(function () { o.payment = pay; setToast('Pedido #' + (o.code || '') + ' marcado como pagado.'); })
+    fb.db.collection('orders').doc(o.id).update({ payment: pay }).then(function () { o.payment = pay; logAudit('pago', 'Marcó pagado ' + money(pay.amount), { order: o.code || o.id, orderId: o.id }); setToast('Pedido #' + (o.code || '') + ' marcado como pagado.'); })
       .catch(function () { setToast('No se pudo marcar como pagado.'); });
   }
   function autoNotify(o) {
@@ -1683,7 +1867,7 @@
   }
   // El equipo recalcula los números públicos cada vez que carga los pedidos.
   function computeCounters() {
-    if (!orders || !isStaff()) return;
+    if (!orders || !isStaff() || server.admin) return; // con el servidor activo, los números se actualizan solos en cada entrega
     var valid = orders.filter(function (o) { return o.status !== 'cancelado'; });
     var phones = {}, places = {}, since = null, top = {}, cut = Date.now() - 14 * DAY;
     valid.forEach(function (o) {
@@ -1697,7 +1881,7 @@
     var prev = counters || {};
     if (prev.delivered === next.delivered && prev.clients === next.clients && prev.places === next.places && JSON.stringify(prev.top || []) === JSON.stringify(next.top)) return;
     next.at = Date.now();
-    fb.db.collection('site').doc('counters').set(next).then(function () { counters = next; }).catch(function () {});
+    fb.db.collection('site').doc('counters').set(next, { merge: true }).then(function () { counters = Object.assign({}, counters || {}, next); }).catch(function () {});
   }
   function isTop(p) { return !!(counters && counters.top && counters.top.slice(0, 6).indexOf(p.id) !== -1); }
   function trustNumbers() {
@@ -2052,7 +2236,7 @@
     b.set(fb.db.collection('clients').doc(ph), { points: inc(-Number(rw.pts)) }, { merge: true });
     b.set(fb.db.collection('pointlog').doc(), { phone: ph, name: c.name || '', pts: -Number(rw.pts), kind: 'canje', note: rw.label, at: Date.now(), by: user.email });
     b.commit().then(function () {
-      c.points = (Number(c.points) || 0) - Number(rw.pts); redeemFor = null;
+      c.points = (Number(c.points) || 0) - Number(rw.pts); redeemFor = null; logAudit('puntos', 'Canje de ' + (c.name || ph) + ': ' + rw.label + ' (−' + rw.pts + ')');
       syncCustomerPoints(ph, null);
       render(true);
       var w = waTo(ph, 'Hola ' + String(c.name || '').split(' ')[0] + '! Canjeaste ' + rw.pts + ' puntos por: ' + rw.label + '. Lo aplicamos en tu próximo pedido. Te quedan ' + c.points + ' puntos.');
@@ -2082,7 +2266,7 @@
     b.set(fb.db.collection('draws').doc(mk), { month: mk, name: pub, barrio: String(c.barrio || '').slice(0, 60), prize: prize, chances: pool.length, participants: participants, at: Date.now() });
     b.set(fb.db.collection('pointlog').doc(), { phone: ph, name: c.name || '', pts: 0, kind: 'sorteo', note: mk + ' · ' + prize + ' · ' + pool.length + ' chances', at: Date.now(), by: user.email });
     b.commit().then(function () {
-      lastDraw = { month: mk, name: pub, barrio: c.barrio || '', prize: prize };
+      lastDraw = { month: mk, name: pub, barrio: c.barrio || '', prize: prize }; logAudit('sorteo', monthName(mk) + ': ganó ' + (c.name || ph) + ' (' + pool.length + ' chances)');
       drawRes = { mk: mk, ph: ph, name: c.name || ph, barrio: c.barrio || '', prize: prize, total: pool.length, mine: clientChances(c, mk), participants: participants };
       render(true);
     }).catch(function () { setToast('No se pudo registrar el sorteo.'); });
@@ -2113,6 +2297,16 @@
       '<p class="hint">En Argentina, los sorteos promocionales tienen que permitir participar sin comprar: por eso las bases incluyen la chance gratis por WhatsApp. Antes de lanzarlo, consultalo con tu contador o abogado.</p></div>';
   }
   function changeStatus(o, st, sel) {
+    if (server.admin) {
+      sel.disabled = true;
+      api('/api/order-status', { orderId: o.id, status: st }, true).then(function (r) {
+        Object.assign(o, r.order); sel.disabled = false; render(true);
+        var c = o.commission, base = st === 'entregado' && c && c.seller ? 'Entregado. Comisión de ' + sellerName(c.seller.code) + ': ' + money(c.seller.amount) + '.' : '';
+        if (base || r.msg) showToast((base + ' ' + (r.msg || '')).trim());
+        loadClients(); autoNotify(o);
+      }).catch(function (e) { sel.disabled = false; sel.value = o.status; setToast(e.message || 'No se pudo cambiar el estado.'); });
+      return;
+    }
     if (o.status === 'entregado' && st !== 'entregado' && isPaid(o.commission)) {
       sel.value = o.status; setToast('Este pedido ya está liquidado al vendedor. No se puede cambiar el estado.'); return;
     }
@@ -2130,6 +2324,7 @@
     var prev = o.status;
     fb.db.collection('orders').doc(o.id).update(upd).then(function () {
       Object.assign(o, upd);
+      logAudit('estado', prev + ' → ' + st, { order: o.code || o.id, orderId: o.id });
       if (o.sellerCode && st !== 'cancelado') touchClient(o, false);
       render(true);
       var base = st === 'entregado' && upd.commission ? 'Entregado. Comisión de ' + sellerName(code) + ': ' + money(upd.commission.seller.amount) + '.' : '';
@@ -2138,6 +2333,12 @@
     }).catch(function () { sel.value = o.status; setToast('No se pudo cambiar el estado.'); });
   }
   function assignSeller(o, code, sel) {
+    if (server.admin) {
+      api('/api/order-status', { orderId: o.id, action: 'assign', sellerCode: code || null }, true).then(function (r) {
+        Object.assign(o, r.order); loadClients(); render(true); setToast(code ? 'Pedido asignado a ' + sellerName(code) + '.' : 'Pedido sin vendedor.', true);
+      }).catch(function (e) { sel.value = o.sellerCode || ''; setToast(e.message || 'No se pudo asignar el vendedor.'); });
+      return;
+    }
     if (isPaid(o.commission)) { sel.value = o.sellerCode || ''; setToast('Este pedido ya está liquidado. No se puede cambiar el vendedor.'); return; }
     var upd = { sellerCode: code || null, assignVia: code ? 'manual' : null, overrideCode: code ? overrideFor(code) : null };
     if (o.status === 'entregado') upd.commission = code ? calcCommission(o, code, upd.overrideCode) : null;
@@ -2350,7 +2551,7 @@
     batch.commit().then(function () {
       doc.id = code; sellers.push(doc); sellersMap[code] = doc;
       if (f.leadId) (leads || []).forEach(function (l) { if (l.id === f.leadId) l.status = 'acordado'; });
-      busy = false; sellerForm = null; setToast(name + ' ya es vendedor. Su link: ' + sellerLink(code));
+      busy = false; sellerForm = null; setToast(name + ' ya es vendedor. Su link: ' + sellerLink(code)); logAudit('vendedor', 'Alta de ' + name + ' (' + code + ')');
     }).catch(function (e) { busy = false; setToast(e && e.code === 'permission-denied' ? 'Sin permiso: revisá las reglas de Firestore.' : 'No se pudo dar de alta. Probá de nuevo.'); });
   }
   function toggleSeller(code) {
@@ -2359,7 +2560,7 @@
     var batch = fb.db.batch();
     batch.update(fb.db.collection('sellers').doc(code), { active: act });
     batch.set(fb.db.collection('codes').doc(code), { name: String(s.name).split(' ')[0].slice(0, 40), active: act });
-    batch.commit().then(function () { s.active = act; setToast(act ? s.name + ' está activo de nuevo.' : s.name + ' quedó pausado: sus clientes no le generan comisión.'); })
+    batch.commit().then(function () { s.active = act; logAudit('vendedor', (act ? 'Reactivó a ' : 'Pausó a ') + s.name + ' (' + code + ')'); setToast(act ? s.name + ' está activo de nuevo.' : s.name + ' quedó pausado: sus clientes no le generan comisión.'); })
       .catch(function () { setToast('No se pudo cambiar.'); });
   }
   function giveAccess(code) {
@@ -2369,7 +2570,7 @@
     var batch = fb.db.batch();
     batch.set(fb.db.collection('team').doc(em), { role: 'seller', sellerCode: code, addedBy: user.email, addedAt: window.firebase.firestore.FieldValue.serverTimestamp() });
     batch.update(fb.db.collection('sellers').doc(code), { email: em });
-    batch.commit().then(function () { s.email = em; setToast('Listo. ' + s.name + ' entra en ' + location.origin + '/#admin con ' + em + '.'); })
+    batch.commit().then(function () { s.email = em; logAudit('vendedor', 'Dio acceso a ' + s.name + ' con ' + em); setToast('Listo. ' + s.name + ' entra en ' + location.origin + '/#admin con ' + em + '.'); })
       .catch(function () { setToast('No se pudo dar acceso.'); });
   }
   function liquidate(code, btn) {
@@ -2383,6 +2584,7 @@
     batch.commit().then(function () {
       items.forEach(function (it) { (orders || []).forEach(function (o) { if (o.id === it.id && o.commission && o.commission[it.kind]) o.commission[it.kind].payoutId = pref.id; }); });
       payouts = payouts || []; payouts.unshift({ id: pref.id, code: code, amount: total, items: items, createdAt: { toDate: function () { return new Date(); } } });
+      logAudit('liquidacion', 'Pagó ' + money(total) + ' a ' + sellerName(code) + ' (' + items.length + ' comisiones)', { code: code, payout: pref.id });
       busy = false; setToast('Liquidación registrada: ' + money(total) + ' a ' + sellerName(code) + '. Mandale el detalle desde “Liquidaciones”.');
     }).catch(function () { busy = false; setToast('No se pudo registrar la liquidación.'); });
   }
@@ -2441,7 +2643,7 @@
     var shareVend = '¿Querés ganar comisión vendiendo a feriantes? Sumate como vendedor de ' + cfg.brand.name + ': ' + linkV;
     var ST = { nuevo: 'Nuevo', confirmado: 'Confirmado', listo: 'Listo', entregado: 'Entregado', cancelado: 'Cancelado' };
     return '<div class="wrap admin">' + head(d.me.name) +
-      (d.me.active === false ? '<div class="admin-note">' + ic('info', 20) + '<span>Tu cuenta está pausada: por ahora tus clientes no generan comisión. Hablá con el equipo.</span></div>' : '') +
+      installCard('vendedor') + (d.me.active === false ? '<div class="admin-note">' + ic('info', 20) + '<span>Tu cuenta está pausada: por ahora tus clientes no generan comisión. Hablá con el equipo.</span></div>' : '') +
       '<div class="panel"><h2>Tus números</h2><div class="tiles">' +
       tile('A cobrar', money(pending), 'pedidos entregados sin liquidar') +
       tile('Cobrado', money(paid), d.payouts.length + ' liquidaci' + (d.payouts.length === 1 ? 'ón' : 'ones')) +
@@ -2474,7 +2676,8 @@
         var act = now - c.last <= monthsMs(comm().clientMonths);
         return '<div class="rcard"><div class="rcard-top"><div><b>' + esc(c.name) + '</b><span>' + esc(c.barrio || '') + (c.phone ? ' · ' + esc(c.phone) : '') + '</span></div><span class="rstate ' + (act ? 'activo' : 'inactivo') + '">' + (act ? 'Asignado' : 'Vencido') + '</span></div>' +
           '<div class="rnums num" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div><small>Pedidos</small><b>' + c.n + '</b></div><div><small>Compró</small><b>' + money(c.total) + '</b></div><div><small>Último</small><b>' + fmtDate(new Date(c.last)) + '</b></div></div>' +
-          (c.phone ? '<a class="btn btn-line btn-sm" href="' + esc(waTo(c.phone, 'Hola ' + String(c.name).split(' ')[0] + '! ¿Cómo va el puesto? Ya está el catálogo actualizado: ' + link)) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Escribirle</a>' : '') +
+          '<div class="sactions"><button class="btn btn-main btn-sm" type="button" data-act="seller-order" data-ph="' + esc(digits(c.phone) || c.name) + '">' + ic('bag', 18) + 'Armarle un pedido</button>' +
+          (c.phone ? '<a class="btn btn-line btn-sm" href="' + esc(waTo(c.phone, 'Hola ' + String(c.name).split(' ')[0] + '! ¿Cómo va el puesto? Ya está el catálogo actualizado: ' + link)) + '" target="_blank" rel="noopener">' + ic('wa', 18) + 'Escribirle</a>' : '') + '</div>' +
           '</div>';
       }).join('') + '</div></div>' : '') +
       (d.team.length ? '<div class="panel"><h2>Vendedores que sumaste</h2><div class="rlist">' + d.team.map(function (t) {
@@ -3125,7 +3328,7 @@
     var t = cartTotals();
     document.body.classList.toggle('has-cart', !!t.count && view !== 'admin');
     document.body.classList.toggle('lock', !!(cartOpen || detailId || share || editing || poster || importer || catPdf || drawRes || catMgr || labels));
-    app.innerHTML = header() + '<main>' + main + '</main>' + (view === 'admin' ? '' : footer()) +
+    app.innerHTML = header() + offlineBar() + '<main>' + main + '</main>' + (view === 'admin' ? '' : footer()) +
       (view === 'admin' || view === 'canal' ? '' : '<a class="wa-float" href="' + esc(waLink('Hola ' + cfg.brand.name + '!')) + '" target="_blank" rel="noopener" aria-label="Escribinos por WhatsApp">' + ic('wa', 30) + '</a>') +
       cartbar() + (view === 'admin' ? '' : detailModal()) + drawer() + shareModal() + productEditor() + posterModal() + importModal() + catsModal() + labelsModal() + catalogModal() + drawModal();
     if (keepScroll) window.scrollTo(0, y);
@@ -3213,7 +3416,7 @@
   /* ================= Firebase: datos ================= */
   function productDoc(p) {
     return {
-      name: String(p.name || '').trim() || 'Producto', sku: cleanSku(p.sku), desc: String(p.desc || ''), cat: p.cat || (cfg.categories || [''])[0],
+      name: String(p.name || '').trim() || 'Producto', sku: cleanSku(p.sku), desc: String(p.desc || ''), cat: p.cat || (cfg.categories || [''])[0], sub: subsOf(p.cat).indexOf(p.sub) !== -1 ? p.sub : '',
       price: Number(p.price) || 0, sug: Number(p.sug) || 0, stock: deriveStock(p), featured: !!p.featured,
       qty: tracked(p) ? Math.max(0, Math.round(Number(p.qty))) : null, minQty: Math.max(0, Math.round(Number(p.minQty) || 0)),
       img: p.img || '', order: typeof p.order === 'number' ? p.order : 0,
@@ -3248,8 +3451,9 @@
       var minOrder = products.reduce(function (m, x) { return Math.min(m, typeof x.order === 'number' ? x.order : 0); }, 0);
       p.order = minOrder - 1;
     }
-    var docData = productDoc(p);
+    var docData = productDoc(p), oldP = prodById(p.id);
     fb.db.collection('products').doc(p.id).set(docData).then(function () {
+      logAudit(isNew ? 'producto' : (oldP && (oldP.price !== docData.price || oldP.sug !== docData.sug) ? 'precio' : 'producto'), (isNew ? 'Alta: ' : 'Edición: ') + docData.name + (oldP && oldP.price !== docData.price ? ' · precio ' + money(oldP.price) + ' → ' + money(docData.price) : ' · ' + money(docData.price)), { pid: p.id });
       docData.id = p.id;
       if (isNew) products.unshift(docData);
       else products = products.map(function (x) { return x.id === p.id ? docData : x; });
@@ -3261,6 +3465,7 @@
     if (!p._confirmDel) { p._confirmDel = true; render(true); return; }
     busy = true; render(true);
     fb.db.collection('products').doc(p.id).delete().then(function () {
+      logAudit('borrar', p.name + (p.sku ? ' [' + p.sku + ']' : ''), { pid: p.id });
       products = products.filter(function (x) { return x.id !== p.id; }); delete cart[p.id]; persistCart();
       busy = false; editing = null; setToast('Producto eliminado.');
     }).catch(function () { busy = false; setToast('No se pudo eliminar.'); });
@@ -3269,6 +3474,7 @@
     if (busy) return;
     var d = clone(cfgDraft);
     d.categories = (cfg.categories || []).slice(); // los rubros se manejan desde "Administrar rubros"
+    d.subcats = clone(cfg.subcats || {});
     d.brands = (d.brands || []).filter(function (b) { return b && (String(b.name || '').trim() || b.logo); });
     d.commissions = d.commissions || clone(COMM_DEFAULT);
     ['base', 'override', 'overrideMonths', 'clientMonths'].forEach(function (k) { d.commissions[k] = Math.max(0, Number(d.commissions[k]) || 0); });
@@ -3296,6 +3502,7 @@
     if (d.contact.channel && !/^https?:\/\//.test(d.contact.channel)) { setToast('El link del canal tiene que empezar con https://'); return; }
     busy = true; render(true);
     fb.db.collection('site').doc('main').set(d).then(function () {
+      logAudit('ajustes', 'Guardó datos y ajustes');
       cfg = d; cfgDraft = cfgBase();
       busy = false; needSeed.cfg = false; setToast('Datos publicados.');
     }).catch(function (e) { busy = false; setToast(e && e.code === 'permission-denied' ? 'Tu cuenta no puede cambiar los datos del negocio.' : 'No se pudo guardar. Probá de nuevo.'); });
@@ -3322,45 +3529,72 @@
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { setToast('Escribí un mail válido.'); return; }
     busy = true; render(true);
     fb.db.collection('team').doc(em).set({ role: r, addedBy: user.email, addedAt: window.firebase.firestore.FieldValue.serverTimestamp() }).then(function () {
-      busy = false; team = null; loadTeam(); setToast('Listo. Ya puede entrar con ' + em + '.');
+      busy = false; team = null; loadTeam(); setToast('Listo. Ya puede entrar con ' + em + '.'); logAudit('equipo', 'Sumó a ' + em + ' (' + r + ')');
     }).catch(function () { busy = false; setToast('No se pudo sumar. Revisá las reglas de Firestore.'); });
   }
-  function sendOrder() {
-    if (sending) return;
-    var lines = cartLines(); if (!lines.length) return;
-    sending = true; render(true);
-    var ref = fb ? fb.db.collection('orders').doc() : null;
-    var code = ref ? ref.id.slice(0, 5).toUpperCase() : Date.now().toString(36).slice(-5).toUpperCase();
-    var msg = orderMessage(code);
-    var link = waLink(msg);
-    var t = cartTotals();
-    var write = ref ? ref.set(Object.assign({
-      code: code,
-      name: String(buyer.name || '').slice(0, 80),
-      barrio: String(buyer.barrio || '').slice(0, 80),
-      phone: digits(buyer.phone).slice(0, 15),
-      items: lines.slice(0, 50).map(function (l) { return { id: l.p.id, name: String(l.p.name).slice(0, 120), sku: cleanSku(l.p.sku), q: l.q, price: priceOf(l.p), cat: String(l.p.cat || '').slice(0, 60) }; }),
-      total: t.total,
-      shipping: shippingCost(),
-      grand: t.total + shippingCost(),
+  // Mensaje de WhatsApp a partir de los datos confirmados (los del servidor, si está activo)
+  function msgFrom(code, d) {
+    var envio = d.delivery && d.delivery.mode === 'envio';
+    var lines = d.items.map(function (i) { var p = prodById(i.id); return '• ' + i.q + ' x ' + (i.sku ? '[' + i.sku + '] ' : '') + i.name + ' (' + money(i.price) + ' c/u)' + (p && p.stock === 'order' ? ' · por encargo' : ''); });
+    return 'Hola ' + cfg.brand.name + '! Te mando mi pedido' + (code ? ' #' + code : '') + ':\n\n' + lines.join('\n') +
+      '\n\nProductos: ' + money(d.total) +
+      (envio ? '\nEnvío a ' + d.delivery.zone + ': ' + money(d.shipping) + (d.delivery.benefit ? ' (beneficio ' + d.delivery.benefit.toLowerCase() + ')' : '') : '\nRetiro en el depósito') +
+      '\nTotal: ' + money(d.total + d.shipping) +
+      '\n\nNombre: ' + (buyer.name || '') + '\nWhatsApp: ' + (buyer.phone || '') + (buyer.barrio ? '\nBarrio: ' + buyer.barrio : '') +
+      (envio ? '\nDirección: ' + (d.delivery.address || '') : '') +
+      (d.ref ? '\nVendedor: ' + d.ref : '');
+  }
+  function localOrderData() {
+    var lines = cartLines(), t = cartTotals();
+    return {
+      items: lines.slice(0, 50).map(function (l) { return { id: l.p.id, name: String(l.p.name).slice(0, 120), sku: cleanSku(l.p.sku), q: l.q, price: priceOf(l.p), cat: String(l.p.cat || '').slice(0, 60), sub: String(l.p.sub || '').slice(0, 60) }; }),
+      total: t.total, shipping: shippingCost(),
       delivery: effMode() === 'envio'
         ? Object.assign({ mode: 'envio', zone: String(buyer.zone || '').slice(0, 60), address: String(buyer.address || '').slice(0, 160), cost: shippingCost(), eta: String((zoneByName(buyer.zone) || {}).eta || '').slice(0, 60) }, shipOffPct() && shipBase() ? { base: shipBase(), benefit: 'Nivel ' + myLevel().name } : {})
         : { mode: 'retiro' },
-      status: 'nuevo',
-      createdAt: window.firebase.firestore.FieldValue.serverTimestamp()
-    }, orderRef() ? { ref: orderRef() } : {}, isClient() && user ? { uid: user.uid } : {})) : Promise.resolve();
-    if (ref && isClient() && user && customer && !customer.error && (!customer.barrio || !customer.phone || (effMode() === 'envio' && !customer.address))) {
+      ref: orderRef() || null
+    };
+  }
+  // Camino principal: el servidor valida precios, stock y envío. Si el servidor no está configurado o no responde, se guarda directo.
+  function sendOrderApi() {
+    var payload = { items: cartLines().map(function (l) { return { id: l.p.id, q: l.q }; }), buyer: { name: buyer.name, barrio: buyer.barrio, phone: buyer.phone },
+      delivery: { mode: effMode(), zone: buyer.zone, address: buyer.address }, ref: orderRef() || '' };
+    return Promise.all([user ? user.getIdToken().catch(function () { return null; }) : null, appCheckToken()]).then(function (t) {
+      var h = { 'Content-Type': 'application/json' }; if (t[0]) h.Authorization = 'Bearer ' + t[0]; if (t[1]) h['X-Firebase-AppCheck'] = t[1];
+      var ctl = window.AbortController ? new AbortController() : null; var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 9000);
+      return fetch('/api/order-create', { method: 'POST', headers: h, body: JSON.stringify(payload), signal: ctl ? ctl.signal : undefined })
+        .then(function (r) { clearTimeout(timer); return r.json().catch(function () { return {}; }).then(function (j) { if (r.ok) return j; var e = new Error(j.error || 'Error ' + r.status); e.fallback = r.status >= 500; throw e; }); },
+          function () { clearTimeout(timer); var e = new Error('sin conexión con el servidor'); e.fallback = true; throw e; });
+    });
+  }
+  function sendOrderDirect() {
+    var ref = fb.db.collection('orders').doc(), code = ref.id.slice(0, 5).toUpperCase(), d = localOrderData();
+    var doc = Object.assign({ code: code, name: String(buyer.name || '').slice(0, 80), barrio: String(buyer.barrio || '').slice(0, 80), phone: digits(buyer.phone).slice(0, 15),
+      items: d.items, total: d.total, shipping: d.shipping, grand: d.total + d.shipping, delivery: d.delivery, status: 'nuevo', createdAt: window.firebase.firestore.FieldValue.serverTimestamp() },
+      d.ref ? { ref: d.ref } : {}, isClient() && user ? { uid: user.uid } : {});
+    var timeout = new Promise(function (res) { setTimeout(res, 2500); });
+    return Promise.race([ref.set(doc).catch(function () {}), timeout]).then(function () { return Object.assign({ id: ref.id, code: code }, d); });
+  }
+  function sendOrder() {
+    if (sending) return;
+    if (offline) { showToast('Estás sin conexión. Cuando vuelva la señal, tocá “Enviar pedido” de nuevo: tu carrito queda guardado.'); return; }
+    if (!cartLines().length) return;
+    sending = true; render(true);
+    if (!fb) { var c0 = Date.now().toString(36).slice(-5).toUpperCase(); finishOrder(Object.assign({ id: '', code: c0 }, localOrderData())); return; }
+    var job = server.admin ? sendOrderApi().catch(function (e) { if (e.fallback) return sendOrderDirect(); throw e; }) : sendOrderDirect();
+    job.then(finishOrder).catch(function (e) { sending = false; render(true); showToast(e.message || 'No se pudo enviar el pedido.'); });
+  }
+  function finishOrder(r) {
+    var link = waLink(msgFrom(r.code, r));
+    if (isClient() && user && customer && !customer.error && (!customer.barrio || !customer.phone || (effMode() === 'envio' && !customer.address))) {
       var upd = Object.assign({}, customer, { name: customer.name || buyer.name, phone: customer.phone || digits(buyer.phone), barrio: customer.barrio || buyer.barrio, address: customer.address || (effMode() === 'envio' ? buyer.address : ''), zone: customer.zone || (effMode() === 'envio' ? buyer.zone : '') });
       saveCustomerDoc(upd, !customer.createdAt).then(function () { customer = upd; }).catch(function () {});
     }
-    var timeout = new Promise(function (res) { setTimeout(res, 2500); });
-    Promise.race([write.catch(function () {}), timeout]).then(function () {
-      lastOrder = { code: code, link: link, id: ref ? ref.id : '' };
-      if (ref && server.wa) fetch('/api/order-created', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: ref.id }), keepalive: true }).catch(function () {});
-      try { sessionStorage.setItem('galpon-last-order', JSON.stringify(lastOrder)); } catch (e) {}
-      cart = {}; persistCart(); sending = false; cartOpen = true; render(true);
-      window.location.href = link;
-    });
+    lastOrder = { code: r.code, link: link, id: r.id || '' };
+    if (r.id && server.wa) fetch('/api/order-created', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: r.id }), keepalive: true }).catch(function () {});
+    try { sessionStorage.setItem('galpon-last-order', JSON.stringify(lastOrder)); } catch (e) {}
+    cart = {}; persistCart(); sending = false; cartOpen = true; render(true);
+    window.location.href = link;
   }
 
   /* ================= eventos ================= */
@@ -3382,8 +3616,26 @@
       case 'close-cart': cartOpen = false; render(true); break;
       case 'new-order': lastOrder = null; try { sessionStorage.removeItem('galpon-last-order'); } catch (er) {} cartOpen = false; go('catalogo'); break;
       case 'send-order': sendOrder(); break;
+      case 'sub': sub = a.getAttribute('data-sub') || ''; render(true); break;
+      case 'catmode': catMode = a.getAttribute('data-mode'); try { localStorage.setItem('galpon-catmode', catMode); } catch (er) {} render(true); break;
+      case 'repeat-last': { var lo = (myOrders || []).filter(function (o) { return o.status !== 'cancelado'; })[0]; if (lo) repeatOrder(lo); break; }
+      case 'cat-tree': applySuggestedTree(); break;
+      case 'sub-add': { var sm = a.getAttribute('data-main'), inp = document.getElementById('subnew-' + catSlug(sm)), sv = cleanCatName(inp && inp.value);
+        if (sv.length < 2) { showToast('Escribí el subrubro.'); break; }
+        if (subsOf(sm).some(function (x) { return norm(x) === norm(sv); })) { showToast('Ese subrubro ya existe.'); break; }
+        saveSubs(sm, subsOf(sm).concat([sv]), null); break; }
+      case 'sub-del': { var dm = a.getAttribute('data-main'), ds = a.getAttribute('data-sub'), n2 = products.filter(function (p) { return p.cat === dm && p.sub === ds; }).length;
+        if (a.getAttribute('data-confirm') !== '1') { a.setAttribute('data-confirm', '1'); a.textContent = n2 ? '¿Quitar? ' + n2 + ' productos quedan sin subrubro' : '¿Quitar?'; break; }
+        var rms = {}; rms[ds] = ''; saveSubs(dm, subsOf(dm).filter(function (x) { return x !== ds; }), rms); break; }
+      case 'sub-ren': { var rm2 = a.getAttribute('data-main'), rs = a.getAttribute('data-sub'); catMgr.subEdit = { main: rm2, sub: rs, val: rs }; render(true); setTimeout(function () { var el = document.getElementById('sub-edit'); if (el) { el.focus(); el.select(); } }, 0); break; }
+      case 'sub-ren-ok': { var se = catMgr.subEdit, nv = cleanCatName(se.val); if (nv.length < 2 || nv === se.sub) { catMgr.subEdit = null; render(true); break; }
+        if (subsOf(se.main).some(function (x) { return x !== se.sub && norm(x) === norm(nv); })) { showToast('Ese subrubro ya existe.'); break; }
+        var rr = {}; rr[se.sub] = nv; saveSubs(se.main, subsOf(se.main).map(function (x) { return x === se.sub ? nv : x; }), rr); break; }
+      case 'sub-up': { var um = a.getAttribute('data-main'), ui2 = Number(a.getAttribute('data-i')), ul2 = subsOf(um).slice(); if (ui2 < 1) break; var t2 = ul2[ui2]; ul2[ui2] = ul2[ui2 - 1]; ul2[ui2 - 1] = t2; saveSubs(um, ul2, null); break; }
+      case 'cat-open': catMgr.open = catMgr.open === a.getAttribute('data-main') ? '' : a.getAttribute('data-main'); render(true); break;
+      case 'e-sub-create': if (editing) { var esn = cleanCatName(editing._newSubVal); if (esn.length < 2) break; var em = editing.cat; saveSubs(em, subsOf(em).indexOf(esn) === -1 ? subsOf(em).concat([esn]) : subsOf(em), null, function () { editing.sub = esn; editing._newSub = false; editing._newSubVal = ''; }); } break;
       case 'cat': {
-        cat = a.getAttribute('data-cat'); render(true);
+        cat = a.getAttribute('data-cat'); sub = ''; render(true);
         var tb = document.querySelector('.toolbar');
         if (tb && !a.classList.contains('chip')) window.scrollTo({ top: tb.getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
         break;
@@ -3531,6 +3783,16 @@
       case 'tl-add': cfgDraft.tiers.levels.push({ name: '', min: 0, shipOff: 0, ptsMult: 1, perk: '' }); render(true); break;
       case 'tl-del': cfgDraft.tiers.levels.splice(Number(a.getAttribute('data-i')), 1); render(true); break;
       case 'recalc-tiers': recalcTiers(a); break;
+      case 'audit-reload': auditList = null; errList = null; render(true); break;
+      case 'audit-f': auditFilter = a.getAttribute('data-f') || ''; render(true); break;
+      case 'backup': exportAll(a); break;
+      case 'install': if (installEvt) { installEvt.prompt(); installEvt.userChoice.then(function () { installEvt = null; render(true); }).catch(function () {}); } break;
+      case 'install-x': try { localStorage.setItem('galpon-install-x', String(Date.now() + 14 * 864e5)); } catch (er) {} render(true); break;
+      case 'seller-order': {
+        var key = a.getAttribute('data-ph'), sc2 = null;
+        (sellerData && sellerData.orders || []).forEach(function (o) { if (!sc2 && (digits(o.phone) === key || o.name === key)) sc2 = { name: o.name, phone: o.phone, barrio: o.barrio }; });
+        if (sc2) sellerOrderFor(sc2); break;
+      }
       case 'plow': pLow = !pLow; render(true); break;
       case 'new-prod': editing = blankProduct(); render(true); break;
       case 'cat-go': e.preventDefault(); cat = a.getAttribute('data-cat'); go('catalogo'); break;
@@ -3544,7 +3806,7 @@
       case 'add-member': addMember(); break;
       case 'del-member':
         if (a.getAttribute('data-confirm') !== '1') { a.setAttribute('data-confirm', '1'); a.textContent = '¿Quitar? Tocá de nuevo'; break; }
-        fb.db.collection('team').doc(id).delete().then(function () { team = null; loadTeam(); setToast('Quitado del equipo.'); }).catch(function () { setToast('No se pudo quitar.'); });
+        fb.db.collection('team').doc(id).delete().then(function () { team = null; loadTeam(); setToast('Quitado del equipo.'); logAudit('equipo', 'Quitó a ' + id); }).catch(function () { setToast('No se pudo quitar.'); });
         break;
     }
   });
@@ -3596,6 +3858,10 @@
     if (t.id === 'cat-edit' && catMgr) { catMgr.editVal = t.value; return; }
     if (t.id === 'cat-move' && catMgr) { catMgr.moveTo = t.value; return; }
     if (t.id === 'e-newcat' && editing) { editing._newCatVal = t.value; return; }
+    if (t.id === 'e-newsub' && editing) { editing._newSubVal = t.value; return; }
+    if (t.id === 'sub-edit' && catMgr && catMgr.subEdit) { catMgr.subEdit.val = t.value; return; }
+    if (t.id === 'e-sub' && editing && t.value === '__newsub') { editing._newSub = true; render(true); setTimeout(function () { var el = document.getElementById('e-newsub'); if (el) el.focus(); }, 0); return; }
+    if (t.id === 'e-cat' && editing && t.value !== '__new') { editing.cat = t.value; if (subsOf(t.value).indexOf(editing.sub) === -1) editing.sub = ''; render(true); return; }
     if (t.id === 'e-cat' && editing && t.value === '__new') { editing._newCat = true; render(true); setTimeout(function () { var el = document.getElementById('e-newcat'); if (el) el.focus(); }, 0); return; }
     if (t.id === 'lab-copies' && labels) { labels.copies = Math.min(24, Math.max(1, Math.round(Number(t.value) || 1))); var lb = document.querySelector('[data-act=lab-print]'); if (lb) lb.textContent = 'Imprimir ' + (labels.sel.length * labels.copies) + ' etiquetas'; return; }
     if (t.id === 'lab-q' && labels) { labels.q = t.value; render(true); return; }
@@ -3661,6 +3927,7 @@
       var upd = {}; upd[field] = val;
       if (field === 'qty' || field === 'stock') upd.stock = deriveStock(Object.assign({}, qp, upd));
       fb.db.collection('products').doc(qp.id).update(upd).then(function () {
+        var oldV = qp[field]; logAudit(field === 'price' || field === 'sug' ? 'precio' : 'stock', qp.name + ': ' + ({ price: 'precio', sug: 'sugerido', qty: 'unidades', stock: 'stock' }[field] || field) + ' ' + (oldV == null ? '—' : oldV) + ' → ' + (val == null ? '—' : val), { pid: qp.id });
         Object.assign(qp, upd); setToast('Guardado: ' + qp.name + (field === 'stock' && tracked(qp) && upd.stock !== val ? ' (el stock se calcula con las unidades)' : ''), true);
         if (upd.stock !== undefined) render(true);
       }).catch(function () { t.value = qp[field]; setToast('No se pudo guardar el cambio.', true); });
@@ -3739,7 +4006,10 @@
     return;
   }
   window.firebase.initializeApp(window.GALPON_FIREBASE);
+  initAppCheck();
   fb = { auth: window.firebase.auth(), db: window.firebase.firestore(), storage: window.firebase.storage() };
+  // guarda una copia local de lo que se ve (catálogo, pedidos) para abrir rápido y sin señal
+  if (fb.db.enablePersistence) fb.db.enablePersistence({ synchronizeTabs: true }).catch(function () {});
 
   Promise.all([
     fb.db.collection('site').doc('main').get().catch(function () { return null; }),
@@ -3763,6 +4033,7 @@
       cfg.payments = Object.assign(clone(PAY_DEFAULT), cfg.payments || {});
       cfg.notify = Object.assign({ auto: true }, cfg.notify || {});
       cfg.trust = Object.assign(clone(TRUST_DEFAULT), cfg.trust || {});
+      cfg.subcats = cfg.subcats || {};
       cfg.tiers = Object.assign(clone(TIERS_DEFAULT), cfg.tiers || {});
       loadCounters();
       loadServerStatus();

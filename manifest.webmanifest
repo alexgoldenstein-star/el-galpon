@@ -1,0 +1,23 @@
+{
+  "name": "El Galpón · Mayorista para feriantes",
+  "short_name": "El Galpón",
+  "description": "Bazar, hogar, tecnología, marroquinería y blanquería a precio de depósito. Pedí en un minuto.",
+  "lang": "es-AR",
+  "start_url": "/?app=1#catalogo",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF8F0",
+  "theme_color": "#FF6B1A",
+  "categories": ["shopping", "business"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Catálogo", "url": "/?app=1#catalogo", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Mis pedidos", "url": "/?app=1#cuenta", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Panel", "url": "/?app=1#admin", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

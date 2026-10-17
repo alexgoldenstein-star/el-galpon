@@ -183,6 +183,26 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Historial de cambios (quién hizo qué y cuándo): el equipo agrega, solo administradores leen; nunca se edita ni se borra.
+    match /audit/{id} {
+      allow read: if isAdmin();
+      allow create: if isStaff() && request.resource.data.by == email() && request.resource.data.at is number;
+      allow update, delete: if false;
+    }
+
+    // Errores de la web (los registra el servidor) y totales internos: solo administradores leen.
+    match /errors/{id} {
+      allow read, delete: if isAdmin();
+      allow write: if false;
+    }
+    match /aggr/{id} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+    match /ratelimits/{id} {
+      allow read, write: if false;
+    }
+
     // Notas internas sobre clientes: solo el equipo.
     match /resellers/{key} {
       allow read, write: if isStaff();
